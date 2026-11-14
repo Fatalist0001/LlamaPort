@@ -96,6 +96,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.models.ModelsSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -402,17 +403,6 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
                     maxLines = 1,
                 )
             }
-        }
-        if (state.memTotalMb > 0) {
-            Text(
-                "Свободно ${formatRam(state.memAvailableMb)} из ${formatRam(state.memTotalMb)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (state.memLow) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
         }
     }
 }
@@ -968,186 +958,6 @@ private fun ChatInputBar(
 }
 
 @Composable
-private fun ModelRow(
-    file: File,
-    mmproj: File?,
-    active: Boolean,
-    enabled: Boolean,
-    onLoad: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Surface(
-        onClick = onLoad,
-        enabled = enabled,
-        shape = MaterialTheme.shapes.medium,
-        color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-    ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(AppIcons.Document, contentDescription = null)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    file.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    formatSize(file.length()) + if (active) " · активна" else "",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (mmproj != null) {
-                    Text(
-                        "mmproj: ${mmproj.name}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            IconButton(onClick = onDelete, enabled = !active) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Удалить")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProjectorRow(
-    file: File,
-    enabled: Boolean,
-    onDelete: () -> Unit,
-) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-    ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(AppIcons.Image, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    file.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    formatSize(file.length()),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onDelete, enabled = enabled) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Удалить mmproj")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModelsSheet(
-    state: UiState,
-    onPick: () -> Unit,
-    onLoad: (File) -> Unit,
-    onDelete: (File) -> Unit,
-    onUnload: () -> Unit,
-    onMmproj: (File) -> File?,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
-    ) {
-        Text("Модели GGUF", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            state.modelInfo ?: "Выберите файл модели, чтобы загрузить её в память",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-
-        if (state.models.isEmpty()) {
-            Text(
-                "В приложении пока нет моделей. Нажмите «Добавить», чтобы выбрать .gguf файл.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            state.models.forEach { file ->
-                ModelRow(
-                    file = file,
-                    mmproj = onMmproj(file),
-                    active = file.name == state.modelName,
-                    enabled = !state.generating && !state.loadingModel,
-                    onLoad = { onLoad(file) },
-                    onDelete = { onDelete(file) },
-                )
-            }
-        }
-
-        if (state.projectors.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(10.dp))
-            Text("Проекторы mmproj", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Подключаются автоматически к модели с совпадающим именем " +
-                    "(например, mmproj-LFM3-Omni-2B-Q4_K_M.gguf).",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            state.projectors.forEach { file ->
-                ProjectorRow(
-                    file = file,
-                    enabled = !state.generating && !state.loadingModel,
-                    onDelete = { onDelete(file) },
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = onPick,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.generating,
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Добавить модель или mmproj")
-        }
-        if (state.modelLoaded) {
-            Spacer(Modifier.height(8.dp))
-            TextButton(
-                onClick = onUnload,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.generating,
-            ) {
-                Text("Выгрузить модель")
-            }
-        }
-    }
-}
-
-@Composable
 internal fun SessionRow(
     session: SessionSummary,
     active: Boolean,
@@ -1562,7 +1372,7 @@ private fun SliderRow(
     }
 }
 
-private fun formatSize(bytes: Long): String {
+internal fun formatSize(bytes: Long): String {
     val mb = bytes / 1024.0 / 1024.0
     return if (mb >= 1024) {
         String.format(Locale.ROOT, "%.2f ГБ", mb / 1024)
@@ -1571,7 +1381,7 @@ private fun formatSize(bytes: Long): String {
     }
 }
 
-private fun formatRam(mb: Long): String =
+internal fun formatRam(mb: Long): String =
     if (mb >= 1024) {
         String.format(Locale.ROOT, "%.1f ГБ", mb / 1024.0)
     } else {
