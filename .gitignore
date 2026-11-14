@@ -1,0 +1,34 @@
+# Build outputs
+build/
+app/build/
+app/src/main/jniLibs/
+
+# Gradle / Kotlin
+.gradle/
+.gradle-home/
+.kotlin/
+
+# SDK, NDK and toolchains (machine-local)
+.sdk/
+toolchain/
+
+# External sources and downloads (see scripts/build-native.sh)
+llama.cpp/
+dl/
+third_party/*.tar.gz
+
+# Keys and signing secrets
+keystore/
+keystore.properties
+.android/
+
+# Machine-local config
+local.properties
+
+# Artifacts and logs
+*.apk
+*.log
+*.aab
+
+# Personal notes / exports not part of the project
+freebuff-chat-*.md
