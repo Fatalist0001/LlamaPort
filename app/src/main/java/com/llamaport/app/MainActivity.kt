@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import com.llamaport.app.ui.motion.ProvideReducedMotion
 import com.llamaport.app.ui.theme.LlamaPortTheme
 
 class MainActivity : ComponentActivity() {
@@ -30,7 +31,9 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             LlamaPortTheme {
-                LlamaPortApp(viewModel)
+                ProvideReducedMotion {
+                    LlamaPortApp(viewModel)
+                }
             }
         }
     }
