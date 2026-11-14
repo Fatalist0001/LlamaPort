@@ -6,11 +6,9 @@ import android.net.Uri
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -41,12 +39,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Create
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -57,7 +53,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -68,6 +66,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -75,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -96,7 +96,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
-import com.llamaport.app.ui.robot.RobotDemoDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -111,8 +110,10 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     var showSettings by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
-    var showSessions by remember { mutableStateOf(false) }
+    var emptyShakeTick by remember { mutableIntStateOf(0) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importModel)
@@ -130,119 +131,135 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         }
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            state.activeSessionTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            state.modelName ?: "модель не загружена",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSessions = true }) {
-                        Icon(AppIcons.Chat, contentDescription = "Чаты")
-                    }
-                    IconButton(
-                        onClick = viewModel::newChat,
-                        enabled = !state.generating,
-                    ) {
-                        Icon(Icons.Outlined.Create, contentDescription = "Новый чат")
-                    }
-                    IconButton(onClick = { showModels = true }) {
-                        Icon(Icons.AutoMirrored.Outlined.List, contentDescription = "Модели")
-                    }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "Настройки")
-                    }
-                },
-            )
-        },
-        bottomBar = {
-            ChatInputBar(
-                state = state,
-                onInput = viewModel::onInputChange,
-                onSend = viewModel::send,
-                onStop = viewModel::stop,
-                onAttach = {
-                    mediaPicker.launch(mediaMimeTypes(state))
-                },
-                onRemoveAttachment = viewModel::removePendingAttachment,
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier
-                .padding(padding)
-                .fillMaxSize(),
-        ) {
-            StatusStrip(state, onFreeMemory = viewModel::freeMemory)
+    // "+" on an empty chat does not create another one: it shakes the
+    // current one so the user sees where they are.
+    val onNewChat: () -> Unit = {
+        if (state.messages.isEmpty()) {
+            emptyShakeTick++
+        } else if (!state.generating) {
+            viewModel.newChat()
+        }
+    }
 
-            if (state.serviceDead) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Процесс инференса остановлен", style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                "Модель выгружена. Можно загрузить её снова.",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            AppDrawer(
+                state = state,
+                onSelectSession = { id ->
+                    viewModel.selectSession(id)
+                    scope.launch { drawerState.close() }
+                },
+                onNewChat = {
+                    scope.launch { drawerState.close() }
+                    onNewChat()
+                },
+                onDeleteSession = viewModel::deleteSession,
+                onRenameSession = viewModel::renameSession,
+                onOpenSettings = {
+                    scope.launch { drawerState.close() }
+                    showSettings = true
+                },
+            )
+        },
+    ) {
+        Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(AppIcons.Menu, contentDescription = "Меню")
                         }
-                        TextButton(
-                            onClick = viewModel::reloadModel,
-                            enabled = state.modelName != null && !state.loadingModel,
+                    },
+                    title = {
+                        ModelChip(
+                            state = state,
+                            onClick = { showModels = true },
+                        )
+                    },
+                    actions = {
+                        IconButton(onClick = onNewChat, enabled = !state.generating) {
+                            Icon(Icons.Filled.Add, contentDescription = "Новый чат")
+                        }
+                    },
+                )
+            },
+            bottomBar = {
+                if (state.modelLoaded || state.messages.isNotEmpty()) {
+                    ChatInputBar(
+                        state = state,
+                        onInput = viewModel::onInputChange,
+                        onSend = viewModel::send,
+                        onStop = viewModel::stop,
+                        onAttach = {
+                            mediaPicker.launch(mediaMimeTypes(state))
+                        },
+                        onRemoveAttachment = viewModel::removePendingAttachment,
+                    )
+                }
+            },
+        ) { padding ->
+            Column(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize(),
+            ) {
+                StatusStrip(state, onFreeMemory = viewModel::freeMemory)
+
+                if (state.serviceDead) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("Перезапустить")
+                            Column(Modifier.weight(1f)) {
+                                Text("Процесс инференса остановлен", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "Модель выгружена. Можно загрузить её снова.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                            TextButton(
+                                onClick = viewModel::reloadModel,
+                                enabled = state.modelName != null && !state.loadingModel,
+                            ) {
+                                Text("Перезапустить")
+                            }
                         }
                     }
                 }
-            }
 
-            val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
-            when {
-                state.loadingModel -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                promptProgress != null -> LinearProgressIndicator(
-                    progress = {
-                        if (promptProgress.total > 0) {
-                            promptProgress.processed.toFloat() / promptProgress.total
-                        } else {
-                            0f
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+                val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
+                when {
+                    state.loadingModel -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    promptProgress != null -> LinearProgressIndicator(
+                        progress = {
+                            if (promptProgress.total > 0) {
+                                promptProgress.processed.toFloat() / promptProgress.total
+                            } else {
+                                0f
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
-            if (state.messages.isEmpty()) {
-                EmptyState(
-                    state = state,
-                    onPick = { picker.launch(arrayOf("*/*")) },
-                    onLoad = { viewModel.loadModel(it) },
-                    onDelete = viewModel::deleteModel,
-                    onMmproj = viewModel::matchedMmproj,
-                )
-            } else {
-                MessageList(state)
+                if (state.messages.isEmpty()) {
+                    HomeEmptyState(
+                        state = state,
+                        shakeTick = emptyShakeTick,
+                        onChooseModel = { showModels = true },
+                        onSuggestion = viewModel::onInputChange,
+                    )
+                } else {
+                    MessageList(state)
+                }
             }
         }
     }
@@ -262,27 +279,6 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 onDelete = viewModel::deleteModel,
                 onUnload = viewModel::unloadModel,
                 onMmproj = viewModel::matchedMmproj,
-            )
-        }
-    }
-
-    if (showSessions) {
-        ModalBottomSheet(
-            onDismissRequest = { showSessions = false },
-            sheetState = sheetState,
-        ) {
-            SessionsSheet(
-                state = state,
-                onSelect = {
-                    viewModel.selectSession(it)
-                    showSessions = false
-                },
-                onNew = {
-                    viewModel.newChat()
-                    showSessions = false
-                },
-                onDelete = viewModel::deleteSession,
-                onRename = viewModel::renameSession,
             )
         }
     }
@@ -971,85 +967,6 @@ private fun ChatInputBar(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun EmptyState(
-    state: UiState,
-    onPick: () -> Unit,
-    onLoad: (File) -> Unit,
-    onDelete: (File) -> Unit,
-    onMmproj: (File) -> File?,
-) {
-    var showRobotDemo by remember { mutableStateOf(false) }
-    if (showRobotDemo) {
-        RobotDemoDialog { showRobotDemo = false }
-    }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            AppIcons.Robot,
-            contentDescription = null,
-            modifier = Modifier
-                .size(64.dp)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = { showRobotDemo = true },
-                ),
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text("LlamaPort", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Локальный чат на llama.cpp. Модель работает прямо на телефоне, без интернета.",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = onPick) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Добавить GGUF-файл")
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Файл будет скопирован во внутреннее хранилище приложения. " +
-                "mmproj-*.gguf подключается автоматически к модели с похожим именем.",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        if (state.models.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Добавленные модели",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(6.dp))
-            state.models.forEach { file ->
-                ModelRow(
-                    file = file,
-                    mmproj = onMmproj(file),
-                    active = file.name == state.modelName,
-                    enabled = !state.generating && !state.loadingModel,
-                    onLoad = { onLoad(file) },
-                    onDelete = { onDelete(file) },
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun ModelRow(
     file: File,
@@ -1231,112 +1148,7 @@ private fun ModelsSheet(
 }
 
 @Composable
-private fun SessionsSheet(
-    state: UiState,
-    onSelect: (String) -> Unit,
-    onNew: () -> Unit,
-    onDelete: (String) -> Unit,
-    onRename: (String, String) -> Unit,
-) {
-    var renaming by remember { mutableStateOf<SessionSummary?>(null) }
-    var renameText by remember { mutableStateOf("") }
-    var deleting by remember { mutableStateOf<SessionSummary?>(null) }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Чаты", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = onNew, enabled = !state.generating) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Новый")
-            }
-        }
-        Text(
-            "История хранится в памяти приложения и сохраняется между запусками.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(12.dp))
-
-        val ordered = state.sessions.sortedByDescending { it.updatedAt }
-        ordered.forEach { session ->
-            SessionRow(
-                session = session,
-                active = session.id == state.activeSessionId,
-                enabled = !state.generating,
-                onSelect = { onSelect(session.id) },
-                onRename = {
-                    renaming = session
-                    renameText = session.title
-                },
-                onDelete = { deleting = session },
-            )
-        }
-    }
-
-    renaming?.let { session ->
-        AlertDialog(
-            onDismissRequest = { renaming = null },
-            title = { Text("Переименовать чат") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    label = { Text("Название") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onRename(session.id, renameText)
-                        renaming = null
-                    },
-                    enabled = renameText.isNotBlank(),
-                ) {
-                    Text("Сохранить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { renaming = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
-    }
-
-    deleting?.let { session ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Удалить чат?") },
-            text = { Text("«${session.title}» будет удалён вместе с историей сообщений.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDelete(session.id)
-                        deleting = null
-                    },
-                ) {
-                    Text("Удалить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleting = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun SessionRow(
+internal fun SessionRow(
     session: SessionSummary,
     active: Boolean,
     enabled: Boolean,

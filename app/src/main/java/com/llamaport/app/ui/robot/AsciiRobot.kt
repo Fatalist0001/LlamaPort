@@ -88,6 +88,7 @@ fun AsciiRobot(
     progress: Float = 0f,
     pulse: Float = 0f,
     onTap: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val reduced = LocalReducedMotion.current
     val painter = rememberVectorPainter(AppIcons.Robot)
@@ -225,8 +226,11 @@ fun AsciiRobot(
         modifier = modifier
             .size(size)
             .aspectRatio(1f)
-            .pointerInput(Unit) {
-                detectTapGestures { handleTap() }
+            .pointerInput(onTap, onLongPress) {
+                detectTapGestures(
+                    onTap = { handleTap() },
+                    onLongPress = { onLongPress?.invoke() },
+                )
             },
     ) {
         Canvas(
@@ -336,7 +340,7 @@ private fun DrawScope.drawRobot(
 
             // idle: rare single-cell glitch (color only, keeps the silhouette solid)
             if (state == RobotState.Idle && scramble >= 1f &&
-                (RobotGrid.cellHash(gx, gy, frame / 3) % 1000) / 1000f > 0.994f
+                (RobotGrid.cellHash(gx, gy, frame / 3) % 1000) / 1000f > 0.9985f
             ) {
                 color = accentColor
             }

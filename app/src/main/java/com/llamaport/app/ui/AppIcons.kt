@@ -13,6 +13,34 @@ import androidx.compose.ui.unit.dp
  */
 object AppIcons {
 
+    val Menu: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Menu",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(3f, 6f)
+                lineTo(21f, 6f)
+                lineTo(21f, 8f)
+                lineTo(3f, 8f)
+                close()
+                moveTo(3f, 11f)
+                lineTo(21f, 11f)
+                lineTo(21f, 13f)
+                lineTo(3f, 13f)
+                close()
+                moveTo(3f, 16f)
+                lineTo(21f, 16f)
+                lineTo(21f, 18f)
+                lineTo(3f, 18f)
+                close()
+            }
+        }.build()
+    }
+
     val Stop: ImageVector by lazy {
         ImageVector.Builder(
             name = "Stop",
