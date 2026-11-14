@@ -6,6 +6,14 @@ import android.net.Uri
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +59,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DrawerValue
@@ -96,7 +105,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.chat.MessageList
+import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
+import com.llamaport.app.ui.motion.AnimatedNumber
+import com.llamaport.app.ui.motion.LocalReducedMotion
+import com.llamaport.app.ui.motion.MotionTokens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -374,9 +388,9 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
         val progress = state.progress
         val left = when {
             progress != null && progress.phase == GenerationPhase.PROMPT ->
-                "Промпт ${progress.processed}/${progress.total} · ${formatSpeed(progress.tokensPerSecond)}"
+                "Промпт ${progress.processed}/${progress.total}"
             progress != null ->
-                "Генерация · ${formatSpeed(progress.tokensPerSecond)}"
+                "Генерация…"
             else -> state.status
         }
         Text(
@@ -401,404 +415,6 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
                     if (state.freeMemoryBusy) "…" else "Освободить",
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolCallBlock(message: ChatMessage) {
-    var expanded by remember(message.id) { mutableStateOf(false) }
-    val container = if (message.isError) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-    val content = if (message.isError) {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Surface(
-        color = container,
-        contentColor = content,
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(if (expanded) "▼" else "▶", fontSize = 11.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    if (message.isError) "Ошибка инструмента" else "Инструмент",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    message.toolName.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (!expanded && !message.toolArgs.isNullOrBlank()) {
-                Text(
-                    message.toolArgs,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            if (expanded) {
-                if (!message.toolArgs.isNullOrBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Аргументы", style = MaterialTheme.typography.labelSmall)
-                    SelectionContainer {
-                        Text(
-                            message.toolArgs,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text("Результат", style = MaterialTheme.typography.labelSmall)
-                SelectionContainer {
-                    Text(
-                        message.toolResult ?: message.text,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private suspend fun androidx.compose.foundation.lazy.LazyListState.scrollToBottom(itemCount: Int) {
-    if (itemCount <= 0) return
-    scrollToItem(itemCount - 1)
-    withFrameNanos { }
-    val info = layoutInfo
-    val last = info.visibleItemsInfo.lastOrNull() ?: return
-    val delta = (last.offset + last.size) - info.viewportEndOffset
-    if (delta > 0) scrollBy(delta.toFloat())
-}
-
-@Composable
-private fun MessageList(state: UiState) {
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    var autoFollow by remember { mutableStateOf(true) }
-    var programmatic by remember { mutableStateOf(false) }
-
-    suspend fun jumpToBottom() {
-        if (state.messages.isEmpty()) return
-        programmatic = true
-        try {
-            listState.scrollToBottom(state.messages.size)
-        } finally {
-            programmatic = false
-        }
-    }
-
-    LaunchedEffect(state.activeSessionId, state.scrollRequest) {
-        autoFollow = true
-        if (state.messages.isNotEmpty()) {
-            withFrameNanos { }
-            jumpToBottom()
-        }
-    }
-
-    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text?.length) {
-        if (autoFollow && state.messages.isNotEmpty()) {
-            withFrameNanos { }
-            jumpToBottom()
-        }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
-            .collect { (scrolling, canForward) ->
-                if (scrolling && !programmatic) {
-                    autoFollow = !canForward
-                } else if (!scrolling && !canForward) {
-                    autoFollow = true
-                }
-            }
-    }
-
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(state.messages, key = { it.id }) { message ->
-                MessageBubble(message)
-            }
-        }
-        if (!autoFollow) {
-            FilledIconButton(
-                onClick = {
-                    autoFollow = true
-                    scope.launch { jumpToBottom() }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(14.dp)
-                    .size(42.dp),
-            ) {
-                Icon(AppIcons.ArrowDown, contentDescription = "Вниз")
-            }
-        }
-    }
-}
-
-@Composable
-private fun MessageBubble(message: ChatMessage) {
-    if (message.role == "tool") {
-        ToolCallBlock(message)
-        return
-    }
-    val isUser = message.role == "user"
-    val container = when {
-        message.isError -> MaterialTheme.colorScheme.errorContainer
-        isUser -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val content = when {
-        message.isError -> MaterialTheme.colorScheme.onErrorContainer
-        isUser -> MaterialTheme.colorScheme.onPrimary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val parts = remember(message.text, isUser) {
-        if (isUser) ThinkingParts(null, message.text) else splitThinking(message.text)
-    }
-
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-    ) {
-        Surface(
-            color = container,
-            contentColor = content,
-            shape = RoundedCornerShape(
-                topStart = 18.dp,
-                topEnd = 18.dp,
-                bottomStart = if (isUser) 18.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 18.dp,
-            ),
-            modifier = Modifier.widthIn(max = 340.dp),
-        ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                if (message.attachments.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (attachment in message.attachments) {
-                            MessageAttachment(attachment)
-                        }
-                    }
-                    if (parts.answer.isNotBlank() || parts.thinking != null) {
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-
-                if (message.isError) {
-                    SelectionContainer {
-                        Text(message.text, style = MaterialTheme.typography.bodyMedium)
-                    }
-                } else if (isUser) {
-                    if (message.text.isNotEmpty()) {
-                        SelectionContainer {
-                            Text(message.text, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                } else {
-                    parts.thinking?.let { thinking ->
-                        ThinkingBlock(
-                            thinking = thinking,
-                            streaming = message.streaming && parts.answer.isEmpty(),
-                        )
-                        if (parts.answer.isNotEmpty()) Spacer(Modifier.height(8.dp))
-                    }
-                    if (parts.answer.isNotEmpty()) {
-                        SelectionContainer {
-                            MarkdownText(
-                                text = parts.answer,
-                                streaming = message.streaming,
-                            )
-                        }
-                    } else if (message.streaming && parts.thinking == null) {
-                        Text("▍", fontSize = 15.sp)
-                    }
-                }
-
-                message.stats?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = content.copy(alpha = 0.65f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThinkingBlock(thinking: String, streaming: Boolean) {
-    var expanded by remember { mutableStateOf(false) }
-    Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(if (expanded) "▼" else "▶", fontSize = 11.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "Размышления",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                if (streaming) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "· думает…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${thinking.length} симв.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (expanded) {
-                Spacer(Modifier.height(7.dp))
-                MarkdownText(thinking, streaming = streaming)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MessageAttachment(attachment: Attachment) {
-    when (attachment.kind) {
-        "image" -> ImageAttachment(attachment)
-        else -> AudioAttachment(attachment)
-    }
-}
-
-@Composable
-private fun ImageAttachment(attachment: Attachment) {
-    val bitmap by produceState<ImageBitmap?>(null, attachment.path) {
-        value = withContext(Dispatchers.IO) { decodeSampledBitmap(attachment.path) }
-    }
-    val image = bitmap
-    if (image != null) {
-        Image(
-            bitmap = image,
-            contentDescription = attachment.name,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .heightIn(max = 190.dp)
-                .widthIn(max = 250.dp)
-                .clip(RoundedCornerShape(9.dp)),
-        )
-    } else {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(9.dp),
-        ) {
-            Row(
-                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(AppIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(attachment.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AudioAttachment(attachment: Attachment) {
-    val context = LocalContext.current
-    var playing by remember { mutableStateOf(false) }
-    val player = remember(attachment.path) {
-        runCatching {
-            MediaPlayer.create(context, Uri.fromFile(File(attachment.path)))
-        }.getOrNull()
-    }
-    DisposableEffect(player) {
-        player?.setOnCompletionListener { playing = false }
-        onDispose {
-            runCatching { player?.release() }
-        }
-    }
-    val duration = remember(player) {
-        val ms = runCatching { player?.duration ?: 0 }.getOrDefault(0)
-        if (ms > 0) formatDuration(ms) else ""
-    }
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier.padding(start = 2.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = {
-                    val mediaPlayer = player ?: return@IconButton
-                    if (playing) {
-                        runCatching { mediaPlayer.pause() }
-                        playing = false
-                    } else {
-                        runCatching { mediaPlayer.start() }
-                        playing = true
-                    }
-                },
-                enabled = player != null,
-                modifier = Modifier.size(38.dp),
-            ) {
-                Icon(
-                    if (playing) AppIcons.Pause else AppIcons.Play,
-                    contentDescription = if (playing) "Пауза" else "Прослушать",
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    attachment.name,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    if (duration.isBlank()) "аудио" else "аудио · $duration",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -864,25 +480,6 @@ private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) 
     }
 }
 
-private fun decodeSampledBitmap(path: String): ImageBitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sample = 1
-    while (bounds.outWidth / sample > 900 || bounds.outHeight / sample > 900) {
-        sample *= 2
-    }
-    val options = BitmapFactory.Options().apply { inSampleSize = sample }
-    return BitmapFactory.decodeFile(path, options)?.asImageBitmap()
-}
-
-private fun formatDuration(milliseconds: Int): String {
-    val totalSeconds = milliseconds / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
-}
-
 @Composable
 private fun ChatInputBar(
     state: UiState,
@@ -939,20 +536,80 @@ private fun ChatInputBar(
                     shape = RoundedCornerShape(24.dp),
                 )
                 Spacer(Modifier.width(8.dp))
+                if (state.generating) {
+                    SpeedChip(tokensPerSecond = state.progress?.tokensPerSecond ?: 0f)
+                    Spacer(Modifier.width(6.dp))
+                }
+                val generating = state.generating
+                val reducedMotion = LocalReducedMotion.current
+                val buttonColor by animateColorAsState(
+                    targetValue = if (generating) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    animationSpec = tween(MotionTokens.Durations.MICRO),
+                    label = "sendButtonColor",
+                )
                 FilledIconButton(
-                    onClick = { if (state.generating) onStop() else onSend() },
-                    enabled = state.generating || (
+                    onClick = { if (generating) onStop() else onSend() },
+                    enabled = generating || (
                         state.modelLoaded &&
                             (state.input.isNotBlank() || state.pendingAttachments.isNotEmpty())
                         ),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = buttonColor,
+                    ),
                     modifier = Modifier.size(48.dp),
                 ) {
-                    Icon(
-                        if (state.generating) AppIcons.Stop else Icons.AutoMirrored.Filled.Send,
-                        contentDescription = if (state.generating) "Остановить" else "Отправить",
-                    )
+                    AnimatedContent(
+                        targetState = generating,
+                        transitionSpec = {
+                            if (reducedMotion) {
+                                fadeIn(tween(MotionTokens.Durations.FADE_REDUCED)) togetherWith
+                                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
+                            } else {
+                                (
+                                    fadeIn(tween(MotionTokens.Durations.MICRO)) +
+                                        scaleIn(
+                                            initialScale = 0.45f,
+                                            animationSpec = MotionTokens.Springs.Press,
+                                        )
+                                    ) togetherWith (
+                                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED)) +
+                                        scaleOut(targetScale = 0.45f)
+                                    )
+                            }
+                        },
+                        label = "sendStopMorph",
+                    ) { isGenerating ->
+                        Icon(
+                            if (isGenerating) AppIcons.Stop else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = if (isGenerating) "Остановить" else "Отправить",
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+/** Live generation speed right next to the send/stop button. */
+@Composable
+private fun SpeedChip(tokensPerSecond: Float) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(50),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AnimatedNumber(
+                value = (tokensPerSecond * 10f).roundToInt(),
+                style = MaterialTheme.typography.labelSmall,
+                format = { String.format(Locale.ROOT, "%.1f t/s", it / 10f) },
+            )
         }
     }
 }
@@ -1388,12 +1045,7 @@ internal fun formatRam(mb: Long): String =
         "$mb МБ"
     }
 
-private fun formatSpeed(tokensPerSecond: Float): String =
-    if (tokensPerSecond >= 10f) {
-        String.format(Locale.ROOT, "%.0f tok/s", tokensPerSecond)
-    } else {
-        String.format(Locale.ROOT, "%.1f tok/s", tokensPerSecond)
-    }
+
 
 private fun contextOptions(cap: Int, current: Int): List<Int> {
     val base = listOf(

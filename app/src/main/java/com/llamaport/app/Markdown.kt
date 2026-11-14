@@ -17,9 +17,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -31,6 +42,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.llamaport.app.ui.motion.LocalReducedMotion
+import com.llamaport.app.ui.motion.MotionTokens
 
 private sealed interface MdBlock {
     data class Paragraph(val text: String) : MdBlock
@@ -64,6 +77,7 @@ fun MarkdownText(
     Column(modifier) {
         blocks.forEachIndexed { index, block ->
             if (index > 0) Spacer(Modifier.height(8.dp))
+            StreamBlock(streaming = streaming) {
             when (block) {
                 is MdBlock.Paragraph -> Text(
                     inlineMarkdown(block.text, codeBackground, linkColor),
@@ -118,15 +132,66 @@ fun MarkdownText(
                 }
                 MdBlock.Rule -> HorizontalDivider()
             }
+            }
         }
         if (streaming) {
-            Text(
-                "▍",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
+            StreamingCursorMark()
+        }
+    }
+}
+
+/**
+ * When streaming, each Markdown block fades in as soon as it appears. The
+ * blocks already on screen keep their state, so only new content animates.
+ */
+@Composable
+private fun StreamBlock(streaming: Boolean, content: @Composable () -> Unit) {
+    if (!streaming) {
+        content()
+        return
+    }
+    val reduced = LocalReducedMotion.current
+    val alpha = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reduced) {
+            alpha.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = MotionTokens.Durations.ENTER,
+                    easing = MotionTokens.Easing.EmphasizedDecelerate,
+                ),
             )
         }
     }
+    Box(Modifier.graphicsLayer { this.alpha = alpha.value }) {
+        content()
+    }
+}
+
+/** Blinking block cursor at the end of a streaming answer. */
+@Composable
+private fun StreamingCursorMark() {
+    val reduced = LocalReducedMotion.current
+    val alpha = if (reduced) {
+        null
+    } else {
+        rememberInfiniteTransition(label = "mdCursor").animateFloat(
+            initialValue = 1f,
+            targetValue = 0.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 520, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "mdCursorAlpha",
+        )
+    }
+    Text(
+        "▍",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
+        // Draw-phase read: the cursor never triggers recomposition.
+        modifier = Modifier.graphicsLayer { this.alpha = alpha?.value ?: 1f },
+    )
 }
 
 @Composable
