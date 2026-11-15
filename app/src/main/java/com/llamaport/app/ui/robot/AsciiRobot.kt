@@ -19,7 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
@@ -112,6 +115,9 @@ fun AsciiRobot(
 
     // --- glyph layout cache ----------------------------------------------
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
+    // The solid silhouette never changes geometry, so it is built once per
+    // size and then drawn as a single path instead of ~576 rects.
+    val silhouette = remember(grid, canvasPx) { buildSilhouettePath(grid, canvasPx) }
     val glyphs: Map<Char, Glyph> = remember(canvasPx) {
         if (canvasPx == IntSize.Zero) {
             emptyMap()
@@ -235,7 +241,10 @@ fun AsciiRobot(
         Canvas(
             Modifier
                 .size(size)
-                .onSizeChanged { canvasPx = it },
+                .onSizeChanged { canvasPx = it }
+                // Own layer: a tick redraws just the robot instead of
+                // re-recording the whole screen.
+                .graphicsLayer(),
         ) {
             if (glyphs.isEmpty()) return@Canvas
             drawRobot(
@@ -256,9 +265,26 @@ fun AsciiRobot(
                 errorColor = scheme.error,
                 dimColor = scheme.onSurfaceVariant,
                 glyphs = glyphs,
+                silhouette = silhouette,
             )
         }
     }
+}
+
+private fun buildSilhouettePath(grid: RobotGrid, canvasPx: IntSize): Path {
+    val path = Path()
+    if (canvasPx == IntSize.Zero) return path
+    val cell = canvasPx.width.toFloat() / grid.size
+    val over = cell * 1.04f
+    for (gy in 0 until grid.size) {
+        for (gx in 0 until grid.size) {
+            if (!grid.isCovered[gy][gx]) continue
+            val cx = (gx + 0.5f) * cell
+            val cy = (gy + 0.5f) * cell
+            path.addRect(Rect(cx - over / 2f, cy - over / 2f, cx + over / 2f, cy + over / 2f))
+        }
+    }
+    return path
 }
 
 private fun DrawScope.drawRobot(
@@ -279,6 +305,7 @@ private fun DrawScope.drawRobot(
     errorColor: Color,
     dimColor: Color,
     glyphs: Map<Char, Glyph>,
+    silhouette: Path,
 ) {
     val cell = size.width / grid.size
     val breathSine = sin(breath * 2f * PI).toFloat()
@@ -300,19 +327,19 @@ private fun DrawScope.drawRobot(
         0f
     }
 
+    val over = cell * 1.04f
+
     fun glyphAt(ch: Char, gx: Int, gy: Int, color: Color, alpha: Float) {
         val g = glyphs[ch] ?: return
         val b = g.bounds
         if (b.width <= 0f || b.height <= 0f) return
-        val cx = offsetX + (gx + 0.5f) * cell
-        val cy = offsetY + (gy + 0.5f) * cell
+        val cx = (gx + 0.5f) * cell
+        val cy = (gy + 0.5f) * cell
         val tint = if (alpha >= 1f) color else color.copy(alpha = color.alpha * alpha)
         // The layout box includes line leading, so the glyph ink is shorter
         // than the box; slight overscan makes cells tile seamlessly.
         val sx = cell * 1.04f / b.width
         val sy = cell * 1.28f / b.height
-        // Map the glyph's ink bounds exactly onto the cell, so filled cells
-        // tile seamlessly and the logo reads as a pixel grid.
         translate(left = cx - cell / 2f - b.left * sx, top = cy - cell / 2f - b.top * sy) {
             scale(scaleX = sx, scaleY = sy, pivot = Offset.Zero) {
                 drawText(
@@ -324,104 +351,127 @@ private fun DrawScope.drawRobot(
         }
     }
 
-    // --- base silhouette ---------------------------------------------------
-    for (gy in 0 until grid.size) {
-        for (gx in 0 until grid.size) {
-            if (!grid.isCovered[gy][gx]) continue
-            var ch = BLOCK
-            var color = baseColor
-            var alpha = 1f
-
-            // intro scramble: cells resolve at staggered noise thresholds
-            if (scramble < grid.noise[gy][gx]) {
-                ch = SCRAMBLE[RobotGrid.cellHash(gx, gy, frame / 2) % SCRAMBLE.size]
-            }
-
-            // idle: rare single-cell glitch (color only, keeps the silhouette solid)
-            if (state == RobotState.Idle && scramble >= 1f &&
-                (RobotGrid.cellHash(gx, gy, frame / 3) % 1000) / 1000f > 0.9985f
-            ) {
-                color = accentColor
-            }
-
-            // thinking: antenna blinks
-            if (state == RobotState.Thinking && grid.isAntenna[gy][gx] &&
-                (frame / 5) % 2 == 0
-            ) {
-                color = accentColor
-            }
-
-            glyphAt(ch, gx, gy, color, alpha)
-        }
+    fun cellRect(gx: Int, gy: Int, color: Color, alpha: Float) {
+        val cx = (gx + 0.5f) * cell
+        val cy = (gy + 0.5f) * cell
+        val tint = if (alpha >= 1f) color else color.copy(alpha = color.alpha * alpha)
+        drawRect(
+            color = tint,
+            topLeft = Offset(cx - over / 2f, cy - over / 2f),
+            size = Size(over, over),
+        )
     }
 
-    val overlayAlpha = enter
-
-    // --- state overlays on the eye sockets ---------------------------------
-    for (region in grid.eyeRegions) {
-        val w = region.width + 1
-        val h = region.height + 1
-        when (state) {
-            RobotState.Sleeping -> {
-                // closed lids: a dim dash in the bottom row of each socket
-                for (gx in region.left..region.right) {
-                    glyphAt('-', gx, region.bottom, dimColor, overlayAlpha)
-                }
-            }
-
-            RobotState.Loading -> {
-                // sockets fill bottom-up with load progress
-                val rows = (progress.coerceIn(0f, 1f) * h).roundToInt()
-                for (row in 0 until rows) {
-                    val gy = region.bottom - row
-                    for (gx in region.left..region.right) {
-                        glyphAt(BLOCK, gx, gy, accentColor, overlayAlpha)
+    translate(left = offsetX, top = offsetY) {
+        // --- base silhouette -----------------------------------------------
+        if (scramble < 1f) {
+            // intro: per-cell glyphs so cells can flicker with scramble chars
+            for (gy in 0 until grid.size) {
+                for (gx in 0 until grid.size) {
+                    if (!grid.isCovered[gy][gx]) continue
+                    val ch = if (scramble < grid.noise[gy][gx]) {
+                        SCRAMBLE[RobotGrid.cellHash(gx, gy, frame / 2) % SCRAMBLE.size]
+                    } else {
+                        BLOCK
+                    }
+                    if (ch == BLOCK) {
+                        cellRect(gx, gy, baseColor, 1f)
+                    } else {
+                        glyphAt(ch, gx, gy, baseColor, 1f)
                     }
                 }
             }
-
-            RobotState.Idle -> {
-                // blink: sockets shut for a moment
-                if (blinkNow) {
-                    for (gy in region.top..region.bottom) {
-                        for (gx in region.left..region.right) {
-                            glyphAt(BLOCK, gx, gy, bodyColor, 1f)
+        } else {
+            drawPath(silhouette, color = baseColor)
+            // idle: rare single-cell glitch (colour only, silhouette stays solid)
+            if (state == RobotState.Idle) {
+                for (gy in 0 until grid.size) {
+                    for (gx in 0 until grid.size) {
+                        if (!grid.isCovered[gy][gx]) continue
+                        if ((RobotGrid.cellHash(gx, gy, frame / 3) % 1000) / 1000f > 0.9985f) {
+                            cellRect(gx, gy, accentColor, 1f)
                         }
                     }
                 }
             }
-
-            RobotState.Thinking -> {
-                // darting pupil inside each socket
-                val offsets = listOf(
-                    0 to 1, 2 to 1, 1 to 0, 1 to 2, 0 to 0, 2 to 2,
-                )
-                val (dx, dy) = offsets[(frame / 4) % offsets.size]
-                glyphAt(BLOCK, region.left + dx, region.top + dy, accentColor, overlayAlpha)
-            }
-
-            RobotState.Error -> {
-                // cross eyes
-                for (i in 0 until 3) {
-                    glyphAt('x', region.left + i, region.top + i, errorColor, overlayAlpha)
-                    glyphAt('x', region.left + i, region.top + 2 - i, errorColor, overlayAlpha)
+            // thinking: antenna blinks
+            if (state == RobotState.Thinking && (frame / 5) % 2 == 0) {
+                for (gy in 0 until grid.size) {
+                    for (gx in 0 until grid.size) {
+                        if (grid.isAntenna[gy][gx]) cellRect(gx, gy, accentColor, 1f)
+                    }
                 }
             }
-
-            RobotState.Generating -> Unit // handled by the mouth below
         }
-    }
 
-    // --- generating: pulsing mouth -----------------------------------------
-    if (state == RobotState.Generating) {
-        val cols = grid.mouthCols.count()
-        val width = (pulse.coerceIn(0f, 1f) * cols).roundToInt()
-        if (width > 0) {
-            val mid = (grid.mouthCols.first + grid.mouthCols.last) / 2f
-            val start = (mid - width / 2f + 0.5f).roundToInt()
-            for (gx in start until start + width) {
-                if (gx in grid.mouthCols) {
-                    glyphAt(BLOCK, gx, grid.mouthRow, accentColor, overlayAlpha)
+        val overlayAlpha = enter
+
+        // --- state overlays on the eye sockets -----------------------------
+        for (region in grid.eyeRegions) {
+            val w = region.width + 1
+            val h = region.height + 1
+            when (state) {
+                RobotState.Sleeping -> {
+                    // closed lids: a dim dash in the bottom row of each socket
+                    for (gx in region.left..region.right) {
+                        glyphAt('-', gx, region.bottom, dimColor, overlayAlpha)
+                    }
+                }
+
+                RobotState.Loading -> {
+                    // sockets fill bottom-up with load progress
+                    val rows = (progress.coerceIn(0f, 1f) * h).roundToInt()
+                    for (row in 0 until rows) {
+                        val gy = region.bottom - row
+                        for (gx in region.left..region.right) {
+                            cellRect(gx, gy, accentColor, overlayAlpha)
+                        }
+                    }
+                }
+
+                RobotState.Idle -> {
+                    // blink: sockets shut for a moment
+                    if (blinkNow) {
+                        for (gy in region.top..region.bottom) {
+                            for (gx in region.left..region.right) {
+                                cellRect(gx, gy, bodyColor, 1f)
+                            }
+                        }
+                    }
+                }
+
+                RobotState.Thinking -> {
+                    // darting pupil inside each socket
+                    val offsets = listOf(
+                        0 to 1, 2 to 1, 1 to 0, 1 to 2, 0 to 0, 2 to 2,
+                    )
+                    val (dx, dy) = offsets[(frame / 4) % offsets.size]
+                    cellRect(region.left + dx, region.top + dy, accentColor, overlayAlpha)
+                }
+
+                RobotState.Error -> {
+                    // cross eyes
+                    for (i in 0 until 3) {
+                        glyphAt('x', region.left + i, region.top + i, errorColor, overlayAlpha)
+                        glyphAt('x', region.left + i, region.top + 2 - i, errorColor, overlayAlpha)
+                    }
+                }
+
+                RobotState.Generating -> Unit // handled by the mouth below
+            }
+        }
+
+        // --- generating: pulsing mouth -------------------------------------
+        if (state == RobotState.Generating) {
+            val cols = grid.mouthCols.count()
+            val width = (pulse.coerceIn(0f, 1f) * cols).roundToInt()
+            if (width > 0) {
+                val mid = (grid.mouthCols.first + grid.mouthCols.last) / 2f
+                val start = (mid - width / 2f + 0.5f).roundToInt()
+                for (gx in start until start + width) {
+                    if (gx in grid.mouthCols) {
+                        cellRect(gx, grid.mouthRow, accentColor, overlayAlpha)
+                    }
                 }
             }
         }
