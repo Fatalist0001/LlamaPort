@@ -161,6 +161,10 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         drawerContent = {
             AppDrawer(
                 state = state,
+                // Drawer content stays composed while closed — pass visibility
+                // so the header robot does not animate offscreen.
+                drawerActive = drawerState.targetValue == DrawerValue.Open ||
+                    drawerState.isAnimationRunning,
                 onSelectSession = { id ->
                     viewModel.selectSession(id)
                     scope.launch { drawerState.close() }

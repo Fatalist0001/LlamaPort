@@ -99,21 +99,7 @@ internal fun ModelChip(
         animationSpec = tween(durationMillis = MotionTokens.Durations.ENTER),
         label = "modelDotColor",
     )
-    val infinite = rememberInfiniteTransition(label = "modelDotPulse")
-    val pulseT by infinite.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 700, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "modelDotPulseT",
-    )
-    val pulseAlpha = if (state.loadingModel || state.generating || state.serviceDead) {
-        pulseT
-    } else {
-        1f
-    }
+    val reduced = LocalReducedMotion.current
 
     Surface(
         shape = RoundedCornerShape(50),
@@ -126,12 +112,31 @@ internal fun ModelChip(
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(9.dp)
-                    .graphicsLayer { alpha = pulseAlpha }
-                    .background(dotColor, CircleShape),
-            )
+            // The infinite transition only exists while the dot actually
+            // pulses; at rest nothing subscribes to the frame clock.
+            if (state.loadingModel || state.generating || state.serviceDead) {
+                val pulseT by rememberInfiniteTransition(label = "modelDotPulse").animateFloat(
+                    initialValue = 0.35f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 700, easing = LinearEasing),
+                        repeatMode = if (reduced) RepeatMode.Restart else RepeatMode.Reverse,
+                    ),
+                    label = "modelDotPulseT",
+                )
+                Box(
+                    Modifier
+                        .size(9.dp)
+                        .graphicsLayer { alpha = if (reduced) 1f else pulseT }
+                        .background(dotColor, CircleShape),
+                )
+            } else {
+                Box(
+                    Modifier
+                        .size(9.dp)
+                        .background(dotColor, CircleShape),
+                )
+            }
             Spacer(Modifier.width(8.dp))
             Text(
                 text = state.modelName ?: "Выбрать модель",
@@ -151,6 +156,7 @@ internal fun ModelChip(
 @Composable
 internal fun AppDrawer(
     state: UiState,
+    drawerActive: Boolean,
     onSelectSession: (String) -> Unit,
     onNewChat: () -> Unit,
     onDeleteSession: (String) -> Unit,
@@ -170,6 +176,9 @@ internal fun AppDrawer(
                 AsciiRobot(
                     state = robotStateFor(state),
                     size = 40.dp,
+                    // The drawer content stays composed while the drawer is
+                    // closed; freeze the robot so it never animates offscreen.
+                    active = drawerActive,
                 )
                 Spacer(Modifier.width(12.dp))
                 Column {

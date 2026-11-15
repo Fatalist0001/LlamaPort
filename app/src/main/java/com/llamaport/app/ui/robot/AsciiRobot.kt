@@ -2,11 +2,6 @@ package com.llamaport.app.ui.robot
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -67,6 +62,9 @@ private const val TICK_MS = 75L
 /** Blink length in ticks (about 150 ms). */
 private const val BLINK_TICKS = 2
 
+/** One slow breathing cycle in ticks (about 2.6 s at 75 ms per tick). */
+private const val BREATH_TICKS = 35
+
 /** A measured glyph plus its tight ink bounds inside the layout box. */
 private class Glyph(val layout: TextLayoutResult, val bounds: Rect)
 
@@ -79,6 +77,8 @@ private class Glyph(val layout: TextLayoutResult, val bounds: Rect)
  *
  * @param progress model load progress in 0..1 (Loading).
  * @param pulse token pulse in 0..1, one beat per streamed token (Generating).
+ * @param active when false the robot freezes: the ticker stops and no frames
+ *   are invalidated. Use for robots that are not on screen (closed drawer).
  */
 @Composable
 fun AsciiRobot(
@@ -87,6 +87,7 @@ fun AsciiRobot(
     size: Dp = 64.dp,
     progress: Float = 0f,
     pulse: Float = 0f,
+    active: Boolean = true,
     onTap: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
 ) {
@@ -97,9 +98,11 @@ fun AsciiRobot(
     val density = LocalDensity.current
 
     // --- cell animation ticker (~13 fps) --------------------------------
+    // The ticker is the only animation clock: blink, scramble and breathing
+    // all derive from it, so the robot never invalidates at display rate.
     var frame by remember { mutableIntStateOf(0) }
-    LaunchedEffect(reduced) {
-        if (!reduced) {
+    LaunchedEffect(active, reduced) {
+        if (active && !reduced) {
             while (true) {
                 delay(TICK_MS)
                 frame++
@@ -139,18 +142,14 @@ fun AsciiRobot(
         }
     }
 
-    // --- breathing (full fps, brightness only) ---------------------------
-    val infinite = rememberInfiniteTransition(label = "robotBreath")
-    val breathT by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "robotBreathT",
-    )
-    val breath = if (reduced) 0.25f else breathT
+    // --- breathing --------------------------------------------------------
+    // Derived from the slow ticker (one sine cycle per BREATH_TICKS), so the
+    // robot redraws at ~13 fps instead of on every display frame.
+    val breath = if (active && !reduced) {
+        (frame % BREATH_TICKS).toFloat() / BREATH_TICKS
+    } else {
+        0.25f
+    }
 
     // --- smooth state transition -----------------------------------------
     val enter = remember { Animatable(0f) }

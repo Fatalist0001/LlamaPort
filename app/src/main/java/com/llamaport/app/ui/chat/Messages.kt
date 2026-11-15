@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -309,10 +310,13 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
                         onLongClick = { menuOpen = true },
                     )
                     .animateContentSize(
-                        animationSpec = if (reduced) {
-                            tween<IntSize>(durationMillis = MotionTokens.Durations.FADE_REDUCED)
-                        } else {
-                            spring<IntSize>(
+                        // While tokens stream in, apply size changes instantly:
+                        // a retargeted spring would animate layout every frame.
+                        // The spring stays for the collapse after completion.
+                        animationSpec = when {
+                            message.streaming -> snap<IntSize>()
+                            reduced -> tween<IntSize>(durationMillis = MotionTokens.Durations.FADE_REDUCED)
+                            else -> spring<IntSize>(
                                 dampingRatio = Spring.DampingRatioNoBouncy,
                                 stiffness = Spring.StiffnessMediumLow,
                             )

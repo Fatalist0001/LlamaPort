@@ -26,6 +26,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -45,12 +46,24 @@ import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 
+@Immutable
 private sealed interface MdBlock {
+    @Immutable
     data class Paragraph(val text: String) : MdBlock
+
+    @Immutable
     data class Heading(val level: Int, val text: String) : MdBlock
+
+    @Immutable
     data class Code(val language: String, val code: String, val closed: Boolean) : MdBlock
+
+    @Immutable
     data class Quote(val text: String) : MdBlock
+
+    @Immutable
     data class ListBlock(val ordered: Boolean, val items: List<String>) : MdBlock
+
+    @Immutable
     data object Rule : MdBlock
 }
 
@@ -78,65 +91,80 @@ fun MarkdownText(
         blocks.forEachIndexed { index, block ->
             if (index > 0) Spacer(Modifier.height(8.dp))
             StreamBlock(streaming = streaming) {
-            when (block) {
-                is MdBlock.Paragraph -> Text(
-                    inlineMarkdown(block.text, codeBackground, linkColor),
-                    style = MaterialTheme.typography.bodyMedium,
+                // Blocks are immutable values: on every new token only the
+                // block that actually changed recomposes, the rest skip.
+                MdBlockView(
+                    block = block,
+                    codeBackground = codeBackground,
+                    linkColor = linkColor,
                 )
-                is MdBlock.Heading -> Text(
-                    inlineMarkdown(block.text, codeBackground, linkColor),
-                    style = when (block.level) {
-                        1 -> MaterialTheme.typography.titleLarge
-                        2 -> MaterialTheme.typography.titleMedium
-                        else -> MaterialTheme.typography.titleSmall
-                    },
-                    fontWeight = FontWeight.SemiBold,
-                )
-                is MdBlock.Code -> CodeBlock(block)
-                is MdBlock.Quote -> Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp, end = 8.dp)) {
-                        Text(
-                            "▏",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            inlineMarkdown(block.text, codeBackground, linkColor),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-                is MdBlock.ListBlock -> Column(
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    block.items.forEachIndexed { itemIndex, item ->
-                        Row(Modifier.fillMaxWidth()) {
-                            Text(
-                                if (block.ordered) "${itemIndex + 1}." else "•",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.width(if (block.ordered) 28.dp else 18.dp),
-                            )
-                            Text(
-                                inlineMarkdown(item, codeBackground, linkColor),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-                MdBlock.Rule -> HorizontalDivider()
-            }
             }
         }
         if (streaming) {
             StreamingCursorMark()
         }
+    }
+}
+
+@Composable
+private fun MdBlockView(
+    block: MdBlock,
+    codeBackground: Color,
+    linkColor: Color,
+) {
+    when (block) {
+        is MdBlock.Paragraph -> Text(
+            inlineMarkdown(block.text, codeBackground, linkColor),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        is MdBlock.Heading -> Text(
+            inlineMarkdown(block.text, codeBackground, linkColor),
+            style = when (block.level) {
+                1 -> MaterialTheme.typography.titleLarge
+                2 -> MaterialTheme.typography.titleMedium
+                else -> MaterialTheme.typography.titleSmall
+            },
+            fontWeight = FontWeight.SemiBold,
+        )
+        is MdBlock.Code -> CodeBlock(block)
+        is MdBlock.Quote -> Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp, end = 8.dp)) {
+                Text(
+                    "▏",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    inlineMarkdown(block.text, codeBackground, linkColor),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        is MdBlock.ListBlock -> Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            block.items.forEachIndexed { itemIndex, item ->
+                Row(Modifier.fillMaxWidth()) {
+                    Text(
+                        if (block.ordered) "${itemIndex + 1}." else "•",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.width(if (block.ordered) 28.dp else 18.dp),
+                    )
+                    Text(
+                        inlineMarkdown(item, codeBackground, linkColor),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        MdBlock.Rule -> HorizontalDivider()
     }
 }
 
