@@ -276,12 +276,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             // Rebuild derived fields from the messages so old files also lose any
             // thinking tags that were stored in previews before the splitter existed.
-            val sessions = stored.sessions.map { summary ->
+            // Empty chats are not part of the history and are dropped on load.
+            val sessions = stored.sessions.mapNotNull { summary ->
                 val messages = stored.messages[summary.id].orEmpty()
-                summary.copy(
-                    preview = previewOf(messages),
-                    messageCount = messages.count { it.role == "user" || it.role == "assistant" },
-                )
+                val count = messages.count { it.role == "user" || it.role == "assistant" }
+                if (count == 0) {
+                    sessionMessages.remove(summary.id)
+                    null
+                } else {
+                    summary.copy(
+                        preview = previewOf(messages),
+                        messageCount = count,
+                    )
+                }
             }.toMutableList()
             if (sessions.isEmpty()) {
                 sessions += createSummary(null)
@@ -319,20 +326,20 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (current != "Новый чат") return current
         val firstUser = messages.firstOrNull { it.role == "user" && it.text.isNotBlank() } ?: return current
         val line = firstUser.text.lineSequence().firstOrNull()?.trim().orEmpty().ifBlank { "Новый чат" }
-        return line.take(48)
+        return line.take(48).let { if (line.length > 48) "$it…" else it }
     }
 
+    /**
+     * Preview comes from the final answer only. Thinking traces never leak into
+     * the chat list; a chat without an answer yet shows "Думает…" in the UI.
+     */
     private fun previewOf(messages: List<ChatMessage>): String {
-        val source = messages.lastOrNull { it.role == "assistant" && !it.isError && it.text.isNotBlank() }
-            ?: messages.lastOrNull { it.role == "user" && it.text.isNotBlank() }
-            ?: return ""
-        val visible = if (source.role == "assistant") {
-            val parts = splitThinking(source.text)
-            parts.answer.ifBlank { parts.thinking.orEmpty() }
-        } else {
-            source.text
-        }
-        return visible.lineSequence().firstOrNull()?.trim().orEmpty().take(80)
+        val source = messages.lastOrNull {
+            it.role == "assistant" && !it.isError && it.text.isNotBlank()
+        } ?: return ""
+        val answer = splitThinking(source.text).answer
+        if (answer.isBlank()) return ""
+        return answer.lineSequence().firstOrNull()?.trim().orEmpty().take(80)
     }
 
     /** Replaces the active chat messages and keeps the session list in sync. */
@@ -348,6 +355,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         updatedAt = System.currentTimeMillis(),
                         messageCount = messages.count { it.role == "user" || it.role == "assistant" },
                         preview = previewOf(messages),
+                        modelName = state.modelName?.takeIf { it.isNotBlank() }
+                            ?: summary.modelName,
                     )
                 } else {
                     summary
@@ -438,9 +447,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         scheduleSave()
     }
 
+    /** Remembers just enough to undo the last deletion from the snackbar. */
+    private data class DeletedSession(
+        val summary: SessionSummary,
+        val messages: List<ChatMessage>,
+        val wasActive: Boolean,
+    )
+
+    private var lastDeleted: DeletedSession? = null
+
     fun deleteSession(id: String) {
         if (_state.value.generating) return
         val state = _state.value
+        val target = state.sessions.firstOrNull { it.id == id } ?: return
+        lastDeleted = DeletedSession(
+            summary = target,
+            messages = sessionMessages[id].orEmpty(),
+            wasActive = id == state.activeSessionId,
+        )
         val remaining = state.sessions.filterNot { it.id == id }
         sessionMessages.remove(id)
         if (remaining.isEmpty()) {
@@ -473,6 +497,32 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         scheduleSave()
     }
 
+    /** Puts the last deleted chat back, unless another deletion happened since. */
+    fun undoDelete() {
+        val deleted = lastDeleted ?: return
+        lastDeleted = null
+        sessionMessages[deleted.summary.id] = deleted.messages
+        _state.update { state ->
+            val restoredActiveId = if (deleted.wasActive) deleted.summary.id else state.activeSessionId
+            val sessions = (state.sessions + deleted.summary)
+                .filter { it.messageCount > 0 || it.id == restoredActiveId || it.id == deleted.summary.id }
+                .sortedByDescending { it.updatedAt }
+            state.copy(
+                sessions = sessions,
+                activeSessionId = restoredActiveId,
+                activeSessionTitle = sessions.firstOrNull { it.id == restoredActiveId }?.title
+                    ?: state.activeSessionTitle,
+                messages = if (deleted.wasActive) deleted.messages else state.messages,
+                scrollRequest = if (deleted.wasActive) state.scrollRequest + 1 else state.scrollRequest,
+            )
+        }
+        scheduleSave()
+    }
+
+    fun clearUndo() {
+        lastDeleted = null
+    }
+
     private fun scheduleSave() {
         dirty = true
         saveJob?.cancel()
@@ -494,7 +544,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val state = _state.value
         val map = HashMap(sessionMessages)
         state.activeSessionId?.let { map[it] = state.messages }
-        return SessionsSnapshot(state.sessions, map, state.activeSessionId)
+        // Empty chats are scratch space, not history: never write them out.
+        val kept = state.sessions.filter { summary ->
+            map[summary.id].orEmpty().any { it.role == "user" || it.role == "assistant" }
+        }
+        val ids = kept.mapTo(HashSet()) { it.id }
+        val activeId = state.activeSessionId?.takeIf { it in ids }
+            ?: kept.maxByOrNull { it.updatedAt }?.id
+        return SessionsSnapshot(kept, map.filterKeys { it in ids }, activeId)
     }
 
     private fun saveNow() {

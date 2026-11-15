@@ -20,6 +20,7 @@ data class SessionSummary(
     val updatedAt: Long,
     val messageCount: Int = 0,
     val preview: String = "",
+    val modelName: String = "",
 )
 
 data class StoredChats(
@@ -70,6 +71,7 @@ class ChatStore(filesDir: File) {
                     updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
                     messageCount = obj.optInt("messageCount", sessionMessages.size),
                     preview = obj.optString("preview", ""),
+                    modelName = obj.optString("modelName", ""),
                 )
                 sessions += summary
                 messages[id] = sessionMessages
@@ -106,6 +108,7 @@ class ChatStore(filesDir: File) {
                 obj.put("updatedAt", summary.updatedAt)
                 obj.put("messageCount", summary.messageCount)
                 obj.put("preview", summary.preview)
+                obj.put("modelName", summary.modelName)
                 val msgs = JSONArray()
                 for (message in messages[summary.id].orEmpty()) {
                     msgs.put(messageToJson(message))

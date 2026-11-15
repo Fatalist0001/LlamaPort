@@ -41,6 +41,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
@@ -58,6 +60,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.util.Calendar
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
@@ -157,6 +160,7 @@ internal fun ModelChip(
 internal fun AppDrawer(
     state: UiState,
     drawerActive: Boolean,
+    snackbarHostState: SnackbarHostState,
     onSelectSession: (String) -> Unit,
     onNewChat: () -> Unit,
     onDeleteSession: (String) -> Unit,
@@ -165,104 +169,128 @@ internal fun AppDrawer(
 ) {
     var renaming by remember { mutableStateOf<SessionSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var deleting by remember { mutableStateOf<SessionSummary?>(null) }
+    // Empty chats are scratch space: only the active one has a row.
+    val visibleSessions = remember(state.sessions, state.activeSessionId) {
+        groupSessions(
+            state.sessions.filter { it.messageCount > 0 || it.id == state.activeSessionId },
+        )
+    }
 
     ModalDrawerSheet {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AsciiRobot(
-                    state = robotStateFor(state),
-                    size = 40.dp,
-                    // The drawer content stays composed while the drawer is
-                    // closed; freeze the robot so it never animates offscreen.
-                    active = drawerActive,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "LlamaPort",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsciiRobot(
+                        state = robotStateFor(state),
+                        size = 40.dp,
+                        // The drawer content stays composed while the drawer is
+                        // closed; freeze the robot so it never animates offscreen.
+                        active = drawerActive,
                     )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "LlamaPort",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            state.modelName ?: "модель не загружена",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                HorizontalDivider()
+                Row(
+                    Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        state.modelName ?: "модель не загружена",
+                        "Чаты",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onNewChat, enabled = !state.generating) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Новый")
+                    }
+                }
+
+                if (visibleSessions.isEmpty()) {
+                    Text(
+                        "Пока нет чатов",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        visibleSessions.forEach { (group, sessions) ->
+                            item(key = "group-${group.name}") {
+                                Text(
+                                    group.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp),
+                                )
+                            }
+                            items(items = sessions, key = { it.id }) { session ->
+                                SessionRow(
+                                    session = session,
+                                    active = session.id == state.activeSessionId,
+                                    enabled = !state.generating,
+                                    onSelect = { onSelectSession(session.id) },
+                                    onRename = {
+                                        renaming = session
+                                        renameText = session.title
+                                    },
+                                    onDelete = { onDeleteSession(session.id) },
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+                NavigationDrawerItem(
+                    label = { Text("Настройки") },
+                    icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                    selected = false,
+                    onClick = onOpenSettings,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+                if (state.backendInfo.isNotBlank()) {
+                    Text(
+                        state.backendInfo,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     )
                 }
-            }
-            HorizontalDivider()
-            Row(
-                Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Чаты",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onNewChat, enabled = !state.generating) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Новый")
                 }
-            }
-
-            if (state.sessions.isEmpty()) {
-                Text(
-                    "Пока нет чатов",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-                Spacer(Modifier.weight(1f))
-            } else {
-                LazyColumn(
-                    Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    items(
-                        items = state.sessions.sortedByDescending { it.updatedAt },
-                        key = { it.id },
-                    ) { session ->
-                        SessionRow(
-                            session = session,
-                            active = session.id == state.activeSessionId,
-                            enabled = !state.generating,
-                            onSelect = { onSelectSession(session.id) },
-                            onRename = {
-                                renaming = session
-                                renameText = session.title
-                            },
-                            onDelete = { deleting = session },
-                        )
-                    }
-                }
-            }
-
-            HorizontalDivider()
-            NavigationDrawerItem(
-                label = { Text("Настройки") },
-                icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
-                selected = false,
-                onClick = onOpenSettings,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            // Same SnackbarHostState as the scaffold: while the drawer is open
+            // this host is the visible one, so "Отменить" is reachable.
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(12.dp),
             )
-            if (state.backendInfo.isNotBlank()) {
-                Text(
-                    state.backendInfo,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-            }
         }
     }
 
@@ -297,28 +325,41 @@ internal fun AppDrawer(
         )
     }
 
-    deleting?.let { session ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Удалить чат?") },
-            text = { Text("«${session.title}» будет удалён вместе с историей сообщений.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteSession(session.id)
-                        deleting = null
-                    },
-                ) {
-                    Text("Удалить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleting = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
     }
+
+private enum class SessionGroup(val label: String) {
+    Today("Сегодня"),
+    Yesterday("Вчера"),
+    Earlier("Ранее"),
+}
+
+/** Splits the chat list into Сегодня / Вчера / Ранее, newest first in each. */
+private fun groupSessions(
+    sessions: List<SessionSummary>,
+): List<Pair<SessionGroup, List<SessionSummary>>> {
+    val startOfToday = Calendar.getInstance().startOfDay()
+    val startOfYesterday = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -1)
+    }.startOfDay()
+    val buckets = LinkedHashMap<SessionGroup, MutableList<SessionSummary>>()
+    for (session in sessions.sortedByDescending { it.updatedAt }) {
+        val group = when {
+            session.updatedAt >= startOfToday -> SessionGroup.Today
+            session.updatedAt >= startOfYesterday -> SessionGroup.Yesterday
+            else -> SessionGroup.Earlier
+        }
+        buckets.getOrPut(group) { mutableListOf() } += session
+    }
+    return buckets.map { (group, list) -> group to list }
+}
+
+private fun Calendar.startOfDay(): Long {
+    val copy = clone() as Calendar
+    copy.set(Calendar.HOUR_OF_DAY, 0)
+    copy.set(Calendar.MINUTE, 0)
+    copy.set(Calendar.SECOND, 0)
+    copy.set(Calendar.MILLISECOND, 0)
+    return copy.timeInMillis
 }
 
 /**

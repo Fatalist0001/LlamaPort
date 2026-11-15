@@ -3,7 +3,6 @@ package com.llamaport.app
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
-import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -68,15 +67,20 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -165,6 +169,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 // so the header robot does not animate offscreen.
                 drawerActive = drawerState.targetValue == DrawerValue.Open ||
                     drawerState.isAnimationRunning,
+                snackbarHostState = snackbarHostState,
                 onSelectSession = { id ->
                     viewModel.selectSession(id)
                     scope.launch { drawerState.close() }
@@ -173,7 +178,23 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                     scope.launch { drawerState.close() }
                     onNewChat()
                 },
-                onDeleteSession = viewModel::deleteSession,
+                onDeleteSession = { id ->
+                    viewModel.deleteSession(id)
+                    scope.launch {
+                        // One undo level: a newer deletion replaces the pending one.
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Чат удалён",
+                            actionLabel = "Отменить",
+                            duration = SnackbarDuration.Short,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            viewModel.undoDelete()
+                        } else {
+                            viewModel.clearUndo()
+                        }
+                    }
+                },
                 onRenameSession = viewModel::renameSession,
                 onOpenSettings = {
                     scope.launch { drawerState.close() }
@@ -618,6 +639,7 @@ private fun SpeedChip(tokensPerSecond: Float) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SessionRow(
     session: SessionSummary,
@@ -626,55 +648,135 @@ internal fun SessionRow(
     onSelect: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = onSelect,
-        enabled = enabled,
-        shape = MaterialTheme.shapes.medium,
-        color = if (active) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) onDelete()
+            false
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = enabled,
+        modifier = modifier.padding(vertical = 4.dp),
+        backgroundContent = {
+            // Show the delete hint only while the row is actually swiped.
+            val reveal = dismissState.progress
+            if (reveal > 0.02f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(
+                            MaterialTheme.colorScheme.errorContainer.copy(
+                                alpha = (reveal * 1.6f).coerceAtMost(1f),
+                            ),
+                        )
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Icon(
+                        Icons.Outlined.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        },
     ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 2.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            onClick = onSelect,
+            enabled = enabled,
+            shape = MaterialTheme.shapes.medium,
+            color = if (active) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    session.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (session.preview.isNotBlank()) {
+            Row(
+                Modifier.padding(start = 14.dp, end = 2.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
                     Text(
-                        session.preview,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        session.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val preview = session.preview.ifBlank {
+                        if (session.messageCount > 0) "Думает…" else ""
+                    }
+                    if (preview.isNotBlank()) {
+                        Text(
+                            preview,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${session.messageCount} сообщ. · " + shortRelativeTime(session.updatedAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (session.modelName.isNotBlank()) {
+                            SessionModelBadge(session.modelName)
+                        }
+                    }
                 }
-                Text(
-                    "${session.messageCount} сообщ. · " +
-                        DateUtils.getRelativeTimeSpanString(session.updatedAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onRename, enabled = enabled) {
-                Icon(Icons.Outlined.Create, contentDescription = "Переименовать")
-            }
-            IconButton(onClick = onDelete, enabled = enabled) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Удалить чат")
+                IconButton(onClick = onRename, enabled = enabled) {
+                    Icon(Icons.Outlined.Create, contentDescription = "Переименовать")
+                }
+                IconButton(onClick = onDelete, enabled = enabled) {
+                    Icon(Icons.Outlined.Delete, contentDescription = "Удалить чат")
+                }
             }
         }
+    }
+}
+
+/** Compact "1 мин / 3 ч / 4 дн" label for the chat list. */
+private fun shortRelativeTime(timestamp: Long): String {
+    val minutes = ((System.currentTimeMillis() - timestamp) / 60_000).coerceAtLeast(0)
+    return when {
+        minutes < 1 -> "сейчас"
+        minutes < 60 -> "$minutes мин"
+        minutes < 1440 -> "${minutes / 60} ч"
+        minutes < 1440 * 7 -> "${minutes / 1440} дн"
+        minutes < 1440 * 30 -> "${minutes / (1440 * 7)} нед"
+        else -> "${minutes / (1440 * 30)} мес"
+    }
+}
+
+/** Tiny chip naming the model the chat was held with. */
+@Composable
+private fun SessionModelBadge(name: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.extraSmall,
+    ) {
+        Text(
+            name.substringBeforeLast('.').take(18),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .widthIn(max = 116.dp)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }
 
