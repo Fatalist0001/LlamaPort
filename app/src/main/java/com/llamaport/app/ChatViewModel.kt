@@ -861,27 +861,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 var estimate = parseEstimate(file, settings.contextSize, settings.kvType)
                 val cap = estimate?.contextLength?.takeIf { it > 0 }
                     ?: maxOf(8192, settings.contextSize)
-                if (settings.contextSize > cap) {
-                    settings = settings.copy(contextSize = cap)
-                    _state.update {
-                        it.copy(
-                            settings = settings,
-                            modelCap = cap,
-                            estimate = estimate,
-                            mmprojBytes = mmproj?.length() ?: 0L,
-                        )
-                    }
-                    estimate = parseEstimate(file, settings.contextSize, settings.kvType) ?: estimate
-                } else {
-                    _state.update {
-                        it.copy(
-                            modelCap = cap,
-                            estimate = estimate,
-                            mmprojBytes = mmproj?.length() ?: 0L,
-                        )
-                    }
+                // The metadata context is a property of the model, not a hard
+                // limit for the setting: the user may pick a larger cache and
+                // sees a warning when it exceeds what the model advertises.
+                _state.update {
+                    it.copy(
+                        modelCap = cap,
+                        estimate = estimate,
+                        mmprojBytes = mmproj?.length() ?: 0L,
+                    )
                 }
-                _state.update { it.copy(estimate = estimate) }
                 val needMb = estimateNeedMb(file, estimate, mmproj)
                 val info = ActivityManager.MemoryInfo()
                 activityManager.getMemoryInfo(info)
@@ -1265,10 +1254,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSettings(transform: (Settings) -> Settings) {
         val before = _state.value.settings
         var next = transform(before)
-        val cap = _state.value.modelCap
-        if (_state.value.estimate != null && cap > 0 && next.contextSize > cap) {
-            next = next.copy(contextSize = cap)
-        }
         if (next.nUbatch > next.nBatch) {
             next = next.copy(nUbatch = next.nBatch)
         }
@@ -1296,9 +1281,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     modelCap = cap,
                     lastNeedMb = estimateNeedMb(file, estimate, mmprojFor(file)),
                 )
-            }
-            if (_state.value.settings.contextSize > cap) {
-                _state.update { it.copy(settings = it.settings.copy(contextSize = cap)) }
             }
         }
     }

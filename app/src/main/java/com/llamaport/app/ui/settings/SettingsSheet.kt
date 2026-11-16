@@ -79,6 +79,9 @@ import kotlin.math.roundToInt
 
 private const val MB = 1024L * 1024L
 
+/** Upper bound of the context slider; the model metadata is only a recommendation. */
+private const val CONTEXT_LIMIT = 262144
+
 /** Quantization presets for temperature / top-p / top-k. */
 private data class TemperaturePreset(
     val label: String,
@@ -322,16 +325,27 @@ internal fun SettingsSheet(
                     state.modelLoaded -> "≈ ${formatSize(fallbackKvBytes(state, settings.contextSize))}"
                     else -> "после загрузки модели"
                 }
+                val capText = if (state.modelLoaded && state.modelCap > 0) {
+                    "модель: ${state.modelCap}"
+                } else {
+                    "макс. $CONTEXT_LIMIT"
+                }
                 ContextSlider(
                     contextSize = settings.contextSize,
-                    maxContext = state.modelCap,
-                    description = "макс. ${state.modelCap} · KV-кэш $kvText",
+                    description = "$capText · KV-кэш $kvText",
                     onValueChange = { value -> onUpdate { it.copy(contextSize = value) } },
                 )
-                if (settings.contextSize > 8192) {
+                val exceedsModel = state.modelLoaded && state.modelCap > 0 &&
+                    settings.contextSize > state.modelCap
+                if (exceedsModel || settings.contextSize > 8192) {
                     Text(
-                        "Большой контекст увеличивает KV-кэш. Если модель не поместится в RAM, " +
-                            "она может быть выгружена системой.",
+                        if (exceedsModel) {
+                            "Контекст больше заявленного моделью (${state.modelCap}): качество " +
+                                "может снизиться, а KV-кэш может не поместиться в RAM."
+                        } else {
+                            "Большой контекст увеличивает KV-кэш. Если модель не поместится в RAM, " +
+                                "она может быть выгружена системой."
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -765,12 +779,11 @@ private fun SettingsSlider(
 @Composable
 private fun ContextSlider(
     contextSize: Int,
-    maxContext: Int,
     description: String,
     onValueChange: (Int) -> Unit,
 ) {
     val minContext = 512
-    val maxValue = maxOf(maxContext, minContext * 2)
+    val maxValue = CONTEXT_LIMIT
     val logSpan = ln(maxValue.toDouble() / minContext)
 
     fun positionOf(context: Int): Float {
