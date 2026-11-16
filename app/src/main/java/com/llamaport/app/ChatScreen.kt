@@ -52,10 +52,8 @@ import androidx.compose.material.icons.outlined.Create
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -66,7 +64,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -74,7 +71,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -115,6 +111,7 @@ import com.llamaport.app.ui.models.ModelsSheet
 import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
+import com.llamaport.app.ui.settings.SettingsSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -780,361 +777,6 @@ private fun SessionModelBadge(name: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsSheet(
-    state: UiState,
-    onUpdate: ((Settings) -> Settings) -> Unit,
-    onReload: () -> Unit,
-) {
-    val settings = state.settings
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
-    ) {
-        Text("Настройки", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = settings.systemPrompt,
-            onValueChange = { value -> onUpdate { it.copy(systemPrompt = value) } },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Системный промпт") },
-            minLines = 2,
-            maxLines = 5,
-        )
-
-        Spacer(Modifier.height(16.dp))
-        val contextValues = remember(state.modelCap, settings.contextSize) {
-            contextOptions(state.modelCap, settings.contextSize)
-        }
-        val contextIndex = contextValues.indexOf(settings.contextSize).let { index ->
-            if (index >= 0) index else contextValues.indexOfFirst { it >= settings.contextSize }
-                .coerceAtLeast(0)
-        }
-        SliderRow(
-            label = "Контекст",
-            valueText = "${settings.contextSize} токенов · макс. ${state.modelCap}",
-            value = contextIndex.toFloat(),
-            range = 0f..(contextValues.lastIndex).toFloat(),
-            steps = (contextValues.size - 2).coerceAtLeast(0),
-            onChange = { v ->
-                val index = v.roundToInt().coerceIn(0, contextValues.lastIndex)
-                onUpdate { it.copy(contextSize = contextValues[index]) }
-            },
-        )
-        if (settings.contextSize > 8192) {
-            Text(
-                "Большой контекст увеличивает KV-кэш. Если модель не поместится в RAM, " +
-                    "она может быть выгружена системой.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        val memoryNeedMb = remember(state.estimate, settings.contextSize, state.mmprojBytes) {
-            val estimate = state.estimate
-            if (estimate == null) {
-                0L
-            } else {
-                val kv = if (estimate.estimateCtx > 0) {
-                    estimate.kvBytes * settings.contextSize / estimate.estimateCtx
-                } else {
-                    estimate.kvBytes
-                }
-                (estimate.fileBytes + kv + state.mmprojBytes) / (1024L * 1024L) + 300L
-            }
-        }
-        if (memoryNeedMb > 0) {
-            Text(
-                "Оценка памяти: ~${formatRam(memoryNeedMb)} · свободно " +
-                    "${formatRam(state.memAvailableMb)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (memoryNeedMb > state.memAvailableMb) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-        } else {
-            Text(
-                "Реальный максимум контекста берётся из метаданных модели и появится после её выбора.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        SliderRow(
-            label = "Потоки генерации",
-            valueText = settings.threads.toString(),
-            value = settings.threads.toFloat(),
-            range = 1f..8f,
-            steps = 6,
-            onChange = { v -> onUpdate { it.copy(threads = v.toInt()) } },
-        )
-        SliderRow(
-            label = "Потоки промпта",
-            valueText = settings.threadsBatch.toString(),
-            value = settings.threadsBatch.toFloat(),
-            range = 1f..8f,
-            steps = 6,
-            onChange = { v -> onUpdate { it.copy(threadsBatch = v.toInt()) } },
-        )
-        val batchValues = remember { listOf(64, 128, 256, 512, 1024, 2048) }
-        val batchIndex = batchValues.indexOf(settings.nBatch).let { index ->
-            if (index >= 0) index else batchValues.indexOfFirst { it >= settings.nBatch }
-                .let { found -> if (found >= 0) found else batchValues.lastIndex }
-        }
-        SliderRow(
-            label = "Пакет промпта",
-            valueText = "${settings.nBatch} токенов",
-            value = batchIndex.toFloat(),
-            range = 0f..batchValues.lastIndex.toFloat(),
-            steps = (batchValues.size - 2).coerceAtLeast(0),
-            onChange = { v ->
-                val index = v.roundToInt().coerceIn(0, batchValues.lastIndex)
-                onUpdate { it.copy(nBatch = batchValues[index]) }
-            },
-        )
-        val ubatchValues = remember { listOf(32, 64, 128, 256, 512) }
-        val ubatchIndex = ubatchValues.indexOf(settings.nUbatch).let { index ->
-            if (index >= 0) index else ubatchValues.indexOfFirst { it >= settings.nUbatch }
-                .let { found -> if (found >= 0) found else ubatchValues.lastIndex }
-        }
-        SliderRow(
-            label = "Микробатч",
-            valueText = "${settings.nUbatch} токенов",
-            value = ubatchIndex.toFloat(),
-            range = 0f..ubatchValues.lastIndex.toFloat(),
-            steps = (ubatchValues.size - 2).coerceAtLeast(0),
-            onChange = { v ->
-                val index = v.roundToInt().coerceIn(0, ubatchValues.lastIndex)
-                onUpdate { it.copy(nUbatch = minOf(ubatchValues[index], settings.nBatch)) }
-            },
-        )
-        val flashLabels = remember { listOf("auto", "включён", "выключен") }
-        SliderRow(
-            label = "Flash Attention",
-            valueText = flashLabels[settings.flashAttn.coerceIn(0, flashLabels.lastIndex)],
-            value = settings.flashAttn.coerceIn(0, flashLabels.lastIndex).toFloat(),
-            range = 0f..flashLabels.lastIndex.toFloat(),
-            steps = 1,
-            onChange = { v -> onUpdate { it.copy(flashAttn = v.roundToInt()) } },
-        )
-        SliderRow(
-            label = "Температура",
-            valueText = String.format(Locale.ROOT, "%.2f", settings.temperature),
-            value = settings.temperature,
-            range = 0f..2f,
-            steps = 19,
-            onChange = { v -> onUpdate { it.copy(temperature = (v * 100).toInt() / 100f) } },
-        )
-        SliderRow(
-            label = "Top-P",
-            valueText = String.format(Locale.ROOT, "%.2f", settings.topP),
-            value = settings.topP,
-            range = 0.1f..1f,
-            steps = 17,
-            onChange = { v -> onUpdate { it.copy(topP = v) } },
-        )
-        SliderRow(
-            label = "Top-K",
-            valueText = settings.topK.toString(),
-            value = settings.topK.toFloat(),
-            range = 1f..100f,
-            steps = 0,
-            onChange = { v -> onUpdate { it.copy(topK = v.toInt().coerceAtLeast(1)) } },
-        )
-        SliderRow(
-            label = "Максимум новых токенов",
-            valueText = settings.maxTokens.toString(),
-            value = settings.maxTokens.toFloat(),
-            range = 64f..2048f,
-            steps = 30,
-            onChange = { v -> onUpdate { it.copy(maxTokens = (v.toInt() / 64) * 64) } },
-        )
-
-        val thinkingValues = remember { listOf(0, 512, 1024, 2048, 4096, 8192) }
-        val thinkingIndex = thinkingValues.indexOf(settings.thinkingBudget).let { index ->
-            if (index >= 0) index else thinkingValues.indexOfFirst { it >= settings.thinkingBudget }
-                .coerceAtLeast(0)
-        }
-        SliderRow(
-            label = "Бюджет размышлений",
-            valueText = if (settings.thinkingBudget > 0) {
-                "${settings.thinkingBudget} токенов"
-            } else {
-                "выключен"
-            },
-            value = thinkingIndex.toFloat(),
-            range = 0f..(thinkingValues.lastIndex).toFloat(),
-            steps = (thinkingValues.size - 2).coerceAtLeast(0),
-            onChange = { v ->
-                val index = v.roundToInt().coerceIn(0, thinkingValues.lastIndex)
-                onUpdate { it.copy(thinkingBudget = thinkingValues[index]) }
-            },
-        )
-        Text(
-            "Бюджет добавляется к максимуму новых токенов. Даже при выключенном бюджете " +
-                "модель может напечатать блок размышлений — он будет показан свёрнутым.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        SwitchRow(
-            label = "mmap модели",
-            description = "Не копировать веса в память целиком; экономит RAM, но файл должен оставаться на месте.",
-            checked = settings.useMmap,
-            onChange = { checked -> onUpdate { it.copy(useMmap = checked) } },
-        )
-        SwitchRow(
-            label = "KV-кэш q8_0",
-            description = "Сжимает кэш контекста примерно вдвое (нужен Flash Attention).",
-            checked = settings.kvType == 1,
-            onChange = { checked -> onUpdate { it.copy(kvType = if (checked) 1 else 0) } },
-        )
-
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV применяются " +
-                "после перезагрузки модели.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onReload,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = state.modelLoaded && !state.generating && !state.loadingModel,
-        ) {
-            Text("Перезагрузить модель")
-        }
-
-        Spacer(Modifier.height(20.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(12.dp))
-        Text("Инструменты", style = MaterialTheme.typography.titleMedium)
-        SwitchRow(
-            label = "Разрешить инструменты",
-            description = "Модель сможет вызывать калькулятор, файлы в песочнице и другие инструменты.",
-            checked = settings.toolsEnabled,
-            onChange = { checked -> onUpdate { it.copy(toolsEnabled = checked) } },
-        )
-        if (settings.toolsEnabled) {
-            for (option in TOOL_OPTIONS) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        checked = option.name in settings.enabledTools,
-                        onCheckedChange = { checked ->
-                            onUpdate { current ->
-                                current.copy(
-                                    enabledTools = if (checked) {
-                                        current.enabledTools + option.name
-                                    } else {
-                                        current.enabledTools - option.name
-                                    },
-                                    httpToolEnabled = if (option.name == "http_get") checked else current.httpToolEnabled,
-                                )
-                            }
-                        },
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(option.label, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            option.description,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            Text(
-                "Файлы доступны только в папке sandbox приложения. http_get и run_js по умолчанию выключены.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Spacer(Modifier.height(20.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(12.dp))
-        Text(
-            state.backendInfo.ifBlank { "llama.cpp" },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private data class ToolOption(
-    val name: String,
-    val label: String,
-    val description: String,
-)
-
-private val TOOL_OPTIONS = listOf(
-    ToolOption("get_time", "get_time", "Текущие дата и время"),
-    ToolOption("calculator", "calculator", "Арифметические выражения"),
-    ToolOption("read_file", "read_file", "Чтение файла из песочницы"),
-    ToolOption("write_file", "write_file", "Запись файла в песочницу"),
-    ToolOption("list_dir", "list_dir", "Список файлов песочницы"),
-    ToolOption("notes", "notes", "Заметки в песочнице"),
-    ToolOption("http_get", "http_get", "HTTP GET, только http(s), ответ до 64 КБ"),
-    ToolOption("run_js", "run_js", "JavaScript в QuickJS, таймаут 8 с, память 32 МБ"),
-)
-
-@Composable
-private fun SwitchRow(
-    label: String,
-    description: String,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                description,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-@Composable
-private fun SliderRow(
-    label: String,
-    valueText: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    onChange: (Float) -> Unit,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(valueText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-        }
-        Slider(
-            value = value.coerceIn(range.start, range.endInclusive),
-            onValueChange = onChange,
-            valueRange = range,
-            steps = steps,
-        )
-    }
-}
-
 internal fun formatSize(bytes: Long): String {
     val mb = bytes / 1024.0 / 1024.0
     return if (mb >= 1024) {
@@ -1152,28 +794,6 @@ internal fun formatRam(mb: Long): String =
     }
 
 
-
-private fun contextOptions(cap: Int, current: Int): List<Int> {
-    val base = listOf(
-        512,
-        1024,
-        2048,
-        3072,
-        4096,
-        6144,
-        8192,
-        12288,
-        16384,
-        24576,
-        32768,
-        49152,
-        65536,
-        98304,
-        131072,
-    )
-    val maximum = maxOf(cap, current, 512)
-    return (base.filter { it < maximum } + maximum + current).distinct().sorted()
-}
 
 private fun mediaMimeTypes(state: UiState): Array<String> = when {
     state.supportsVision && state.supportsAudio -> arrayOf("image/*", "audio/*")

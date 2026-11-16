@@ -227,6 +227,26 @@ object AppIcons {
         }.build()
     }
 
+    val Chevron: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Chevron",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(7.41f, 8.59f)
+                lineTo(12f, 13.17f)
+                lineTo(16.59f, 8.59f)
+                lineTo(18f, 10f)
+                lineTo(12f, 16f)
+                lineTo(6f, 10f)
+                close()
+            }
+        }.build()
+    }
+
     val ArrowDown: ImageVector by lazy {
         ImageVector.Builder(
             name = "ArrowDown",
