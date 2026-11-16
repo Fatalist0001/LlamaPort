@@ -40,8 +40,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -98,12 +96,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
@@ -112,6 +108,9 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.settings.SettingsSheet
+import com.llamaport.app.ui.theme.LocalPixelFont
+import com.llamaport.app.ui.theme.ModelChipShape
+import com.llamaport.app.ui.theme.SmallModelChipShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -447,7 +446,7 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
 private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.small,
     ) {
         Row(
             Modifier.padding(start = 6.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
@@ -465,7 +464,7 @@ private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) 
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(34.dp)
-                            .clip(RoundedCornerShape(7.dp)),
+                            .clip(MaterialTheme.shapes.extraSmall),
                     )
                 } else {
                     Icon(
@@ -555,7 +554,7 @@ private fun ChatInputBar(
                         Text(if (state.modelLoaded) "Сообщение…" else "Сначала загрузите модель")
                     },
                     maxLines = 5,
-                    shape = RoundedCornerShape(24.dp),
+                    shape = MaterialTheme.shapes.large,
                 )
                 Spacer(Modifier.width(8.dp))
                 if (state.generating) {
@@ -621,7 +620,7 @@ private fun ChatInputBar(
 private fun SpeedChip(tokensPerSecond: Float) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(50),
+        shape = ModelChipShape,
     ) {
         Row(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -629,7 +628,9 @@ private fun SpeedChip(tokensPerSecond: Float) {
         ) {
             AnimatedNumber(
                 value = (tokensPerSecond * 10f).roundToInt(),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = LocalPixelFont.current,
+                ),
                 format = { String.format(Locale.ROOT, "%.1f t/s", it / 10f) },
             )
         }
@@ -762,7 +763,7 @@ private fun shortRelativeTime(timestamp: Long): String {
 private fun SessionModelBadge(name: String) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.extraSmall,
+        shape = SmallModelChipShape,
     ) {
         Text(
             name.substringBeforeLast('.').take(18),

@@ -2,6 +2,7 @@ package com.llamaport.app.ui.models
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -56,8 +56,11 @@ import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.motion.AnimatedNumber
+import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
+import com.llamaport.app.ui.theme.LocalPixelFont
+import com.llamaport.app.ui.theme.PillShape
 import java.io.File
 
 private const val MB = 1024L * 1024L
@@ -385,7 +388,9 @@ private fun ModelCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         formatSize(file.length()),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = LocalPixelFont.current,
+                        ),
                         color = scheme.onSurfaceVariant,
                     )
                     quantLabel(file.name)?.let { quant ->
@@ -450,7 +455,7 @@ private fun ModelCard(
 @Composable
 private fun Badge(text: String) {
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = PillShape,
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
@@ -490,7 +495,9 @@ private fun ProjectorRow(
                 )
                 Text(
                     formatSize(file.length()),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = LocalPixelFont.current,
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -517,16 +524,18 @@ internal fun RamBar(
     val model = modelMb.coerceIn(0L, used)
     val system = used - model
 
-    val systemF by animateFloatAsState(system.toFloat() / total, tween(MotionTokens.Durations.ENTER), label = "ramSystem")
-    val modelF by animateFloatAsState(model.toFloat() / total, tween(MotionTokens.Durations.ENTER), label = "ramModel")
-    val freeF by animateFloatAsState(free.toFloat() / total, tween(MotionTokens.Durations.ENTER), label = "ramFree")
+    val reduced = LocalReducedMotion.current
+    val segmentSpec = if (reduced) snap<Float>() else tween<Float>(MotionTokens.Durations.ENTER)
+    val systemF by animateFloatAsState(system.toFloat() / total, segmentSpec, label = "ramSystem")
+    val modelF by animateFloatAsState(model.toFloat() / total, segmentSpec, label = "ramModel")
+    val freeF by animateFloatAsState(free.toFloat() / total, segmentSpec, label = "ramFree")
 
     Column {
         Row(
             Modifier
                 .fillMaxWidth()
                 .height(18.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(MaterialTheme.shapes.extraSmall)
                 .background(scheme.surfaceVariant),
         ) {
             Segment(systemF, scheme.onSurfaceVariant.copy(alpha = 0.35f))
@@ -560,23 +569,26 @@ private fun Legend(
     mb: Long,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .background(color, CircleShape),
-        )
-        Spacer(Modifier.width(5.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-        Spacer(Modifier.width(4.dp))
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(color, CircleShape),
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
         AnimatedNumber(
             value = mb.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = LocalPixelFont.current,
+            ),
             format = { formatRam(it.toLong()) },
         )
     }

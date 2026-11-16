@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Settings
@@ -60,6 +59,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
@@ -68,6 +68,8 @@ import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
+import com.llamaport.app.ui.theme.LocalPixelFont
+import com.llamaport.app.ui.theme.ModelChipShape
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -105,7 +107,7 @@ internal fun ModelChip(
     val reduced = LocalReducedMotion.current
 
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = ModelChipShape,
         color = scheme.surfaceVariant,
         modifier = modifier
             .widthIn(max = 260.dp)
@@ -116,21 +118,22 @@ internal fun ModelChip(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // The infinite transition only exists while the dot actually
-            // pulses; at rest nothing subscribes to the frame clock.
-            if (state.loadingModel || state.generating || state.serviceDead) {
+            // pulses; at rest (and with reduced motion) nothing subscribes to
+            // the frame clock.
+            if (!reduced && (state.loadingModel || state.generating || state.serviceDead)) {
                 val pulseT by rememberInfiniteTransition(label = "modelDotPulse").animateFloat(
                     initialValue = 0.35f,
                     targetValue = 1f,
                     animationSpec = infiniteRepeatable(
                         animation = tween(durationMillis = 700, easing = LinearEasing),
-                        repeatMode = if (reduced) RepeatMode.Restart else RepeatMode.Reverse,
+                        repeatMode = RepeatMode.Reverse,
                     ),
                     label = "modelDotPulseT",
                 )
                 Box(
                     Modifier
                         .size(9.dp)
-                        .graphicsLayer { alpha = if (reduced) 1f else pulseT }
+                        .graphicsLayer { alpha = pulseT }
                         .background(dotColor, CircleShape),
                 )
             } else {
@@ -194,8 +197,10 @@ internal fun AppDrawer(
                     Column {
                         Text(
                             "LlamaPort",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFamily = LocalPixelFont.current,
+                                fontSize = 18.sp,
+                            ),
                         )
                         Text(
                             state.modelName ?: "модель не загружена",
@@ -393,20 +398,24 @@ internal fun HomeEmptyState(
         }
     }
 
-    val loadingProgress = if (state.loadingModel) {
-        val infinite = rememberInfiniteTransition(label = "loadFill")
-        val t by infinite.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1100, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "loadFillT",
-        )
-        t
-    } else {
-        0f
+    val loadingProgress = when {
+        !state.loadingModel -> 0f
+        // With reduced motion the eyes sit at a readable half-filled state
+        // instead of running an endless decorative fill.
+        reduced -> 0.6f
+        else -> {
+            val infinite = rememberInfiniteTransition(label = "loadFill")
+            val t by infinite.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1100, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "loadFillT",
+            )
+            t
+        }
     }
 
     val suggestions = listOf(
@@ -443,8 +452,10 @@ internal fun HomeEmptyState(
         Reveal(index = 1) {
             Text(
                 "LlamaPort",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontFamily = LocalPixelFont.current,
+                    fontSize = 26.sp,
+                ),
             )
         }
         Spacer(Modifier.height(6.dp))

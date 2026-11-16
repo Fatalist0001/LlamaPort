@@ -14,10 +14,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -43,7 +39,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.DropdownMenu
@@ -90,23 +85,16 @@ import com.llamaport.app.UiState
 import com.llamaport.app.splitThinking
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.motion.LocalReducedMotion
+import com.llamaport.app.ui.motion.disclosureEnter
+import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.robot.RobotAvatar
+import com.llamaport.app.ui.theme.ChatBubbleShape
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private suspend fun LazyListState.scrollToBottom(itemCount: Int) {
-    if (itemCount <= 0) return
-    scrollToItem(itemCount - 1)
-    withFrameNanos { }
-    val info = layoutInfo
-    val last = info.visibleItemsInfo.lastOrNull() ?: return
-    val delta = (last.offset + last.size) - info.viewportEndOffset
-    if (delta > 0) scrollBy(delta.toFloat())
-}
 
 @Composable
 internal fun MessageList(state: UiState) {
@@ -119,7 +107,19 @@ internal fun MessageList(state: UiState) {
         if (state.messages.isEmpty()) return
         programmatic = true
         try {
-            listState.scrollToBottom(state.messages.size)
+            // While a long answer streams in, its item is taller than the
+            // viewport. Re-aligning the item every token (scrollToItem, then a
+            // frame, then scrollBy) made the answer jump between its top and
+            // its bottom on every token. When the tail is already on screen,
+            // just follow the growing edge by the missing pixels instead.
+            val info = listState.layoutInfo
+            val tail = info.visibleItemsInfo.lastOrNull()
+            if (tail == null || tail.index != state.messages.lastIndex) {
+                listState.scrollToItem(state.messages.lastIndex)
+            }
+            val end = listState.layoutInfo.visibleItemsInfo.lastOrNull() ?: return
+            val delta = (end.offset + end.size) - listState.layoutInfo.viewportEndOffset
+            if (delta > 0) listState.scrollBy(delta.toFloat())
         } finally {
             programmatic = false
         }
@@ -239,12 +239,7 @@ private fun UserBubble(message: ChatMessage) {
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomStart = 18.dp,
-                    bottomEnd = 6.dp,
-                ),
+                shape = ChatBubbleShape,
                 modifier = Modifier
                     .widthIn(max = 340.dp)
                     .combinedClickable(
@@ -444,9 +439,14 @@ private fun StreamingCursor() {
 @Composable
 private fun ToolCallBlock(message: ChatMessage) {
     var expanded by remember(message.id) { mutableStateOf(false) }
+    val reduced = LocalReducedMotion.current
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
-        animationSpec = tween(durationMillis = MotionTokens.Durations.SHORT),
+        animationSpec = if (reduced) {
+            snap()
+        } else {
+            tween(durationMillis = MotionTokens.Durations.SHORT)
+        },
         label = "toolArrow",
     )
     val container = if (message.isError) {
@@ -462,7 +462,7 @@ private fun ToolCallBlock(message: ChatMessage) {
     Surface(
         color = container,
         contentColor = content,
-        shape = RoundedCornerShape(10.dp),
+        shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -507,8 +507,8 @@ private fun ToolCallBlock(message: ChatMessage) {
             }
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(tween(MotionTokens.Durations.SHORT)) + fadeIn(),
-                exit = shrinkVertically(tween(MotionTokens.Durations.MICRO)) + fadeOut(),
+                enter = disclosureEnter(),
+                exit = disclosureExit(),
             ) {
                 Column {
                     if (!message.toolArgs.isNullOrBlank()) {
@@ -546,12 +546,16 @@ private fun ThinkingBlock(thinking: String, streaming: Boolean) {
     val reduced = LocalReducedMotion.current
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
-        animationSpec = tween(durationMillis = MotionTokens.Durations.SHORT),
+        animationSpec = if (reduced) {
+            snap()
+        } else {
+            tween(durationMillis = MotionTokens.Durations.SHORT)
+        },
         label = "thinkingArrow",
     )
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
@@ -595,8 +599,8 @@ private fun ThinkingBlock(thinking: String, streaming: Boolean) {
             }
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(tween(MotionTokens.Durations.SHORT)) + fadeIn(),
-                exit = shrinkVertically(tween(MotionTokens.Durations.MICRO)) + fadeOut(),
+                enter = disclosureEnter(),
+                exit = disclosureExit(),
             ) {
                 Column {
                     Spacer(Modifier.height(7.dp))
@@ -665,12 +669,12 @@ private fun ImageAttachment(attachment: Attachment) {
             modifier = Modifier
                 .heightIn(max = 190.dp)
                 .widthIn(max = 250.dp)
-                .clip(RoundedCornerShape(9.dp)),
+                .clip(MaterialTheme.shapes.small),
         )
     } else {
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(9.dp),
+            shape = MaterialTheme.shapes.small,
         ) {
             Row(
                 Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -705,7 +709,7 @@ private fun AudioAttachment(attachment: Attachment) {
     }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(10.dp),
+        shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(

@@ -4,10 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -60,20 +55,23 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.llamaport.app.Settings
 import com.llamaport.app.UiState
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
 import com.llamaport.app.ui.motion.LocalReducedMotion
+import com.llamaport.app.ui.motion.disclosureEnter
+import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
 import com.llamaport.app.ui.motion.pressable
+import com.llamaport.app.ui.theme.LocalPixelFont
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
@@ -176,7 +174,7 @@ internal fun SettingsSheet(
                     onValueChange = { value -> onUpdate { it.copy(systemPrompt = value) } },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Системный промпт") },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.medium,
                     minLines = 2,
                     maxLines = 6,
                 )
@@ -549,14 +547,18 @@ private fun SettingsSection(
 ) {
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard),
+        animationSpec = if (LocalReducedMotion.current) {
+            snap()
+        } else {
+            tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard)
+        },
         label = "sectionChevron",
     )
 
     Column(Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
         ) {
             Row(
@@ -639,7 +641,11 @@ private fun DetailsToggle(
 ) {
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard),
+        animationSpec = if (LocalReducedMotion.current) {
+            snap()
+        } else {
+            tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard)
+        },
         label = "detailsChevron",
     )
     Row(
@@ -837,8 +843,9 @@ private fun <T> ExactNumberField(
         onValueChange = { draft = it },
         singleLine = true,
         textStyle = MaterialTheme.typography.labelLarge.copy(
+            fontFamily = LocalPixelFont.current,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -858,7 +865,7 @@ private fun <T> ExactNumberField(
                     parse(draft)?.let(onCommit)
                 }
             }
-            .clip(RoundedCornerShape(10.dp))
+            .clip(MaterialTheme.shapes.extraSmall)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .padding(horizontal = 10.dp, vertical = 7.dp),
     )
@@ -918,26 +925,6 @@ private fun ToolRow(
             )
         }
     }
-}
-
-@Composable
-private fun disclosureEnter() = if (LocalReducedMotion.current) {
-    fadeIn(tween(MotionTokens.Durations.FADE_REDUCED))
-} else {
-    expandVertically(
-        animationSpec = tween(MotionTokens.Durations.ENTER, easing = MotionTokens.Easing.EmphasizedDecelerate),
-        expandFrom = Alignment.Top,
-    ) + fadeIn(tween(MotionTokens.Durations.ENTER))
-}
-
-@Composable
-private fun disclosureExit() = if (LocalReducedMotion.current) {
-    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
-} else {
-    shrinkVertically(
-        animationSpec = tween(MotionTokens.Durations.SHORT, easing = MotionTokens.Easing.EmphasizedAccelerate),
-        shrinkTowards = Alignment.Top,
-    ) + fadeOut(tween(MotionTokens.Durations.SHORT))
 }
 
 /** Number of steps a continuous value has passed, for step haptics. */

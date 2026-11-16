@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -129,7 +128,7 @@ private fun MdBlockView(
         is MdBlock.Code -> CodeBlock(block)
         is MdBlock.Quote -> Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            shape = RoundedCornerShape(6.dp),
+            shape = MaterialTheme.shapes.extraSmall,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp, end = 8.dp)) {
@@ -226,7 +225,7 @@ private fun StreamingCursorMark() {
 private fun CodeBlock(block: MdBlock.Code) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(8.dp),
+        shape = MaterialTheme.shapes.extraSmall,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {

@@ -1,9 +1,16 @@
 package com.llamaport.app.ui.motion
 
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
@@ -16,16 +23,36 @@ import androidx.compose.ui.platform.LocalContext
  */
 val LocalReducedMotion = staticCompositionLocalOf { false }
 
+private fun readAnimatorScale(context: android.content.Context): Float = runCatching {
+    Settings.Global.getFloat(
+        context.contentResolver,
+        Settings.Global.ANIMATOR_DURATION_SCALE,
+        1f,
+    )
+}.getOrDefault(1f)
+
+/**
+ * Reads the system animator scale and keeps following it: toggling
+ * "Remove animations" in system settings updates the UI immediately,
+ * without restarting the app.
+ */
 @Composable
 fun rememberReducedMotion(): Boolean {
     val context = LocalContext.current
-    return remember {
-        Settings.Global.getFloat(
-            context.contentResolver,
-            Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        ) == 0f
+    var scale by remember { mutableFloatStateOf(readAnimatorScale(context)) }
+
+    DisposableEffect(context) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                scale = readAnimatorScale(context)
+            }
+        }
+        val uri = Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE)
+        context.contentResolver.registerContentObserver(uri, false, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
+
+    return scale == 0f
 }
 
 /** Provides [LocalReducedMotion] for the subtree. */
