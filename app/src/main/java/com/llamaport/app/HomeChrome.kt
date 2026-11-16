@@ -67,7 +67,7 @@ import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
-import com.llamaport.app.ui.theme.ModelChipShape
+import com.llamaport.app.ui.theme.PillShape
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -105,7 +105,7 @@ internal fun ModelChip(
     val reduced = LocalReducedMotion.current
 
     Surface(
-        shape = ModelChipShape,
+        shape = PillShape,
         color = scheme.surfaceVariant,
         modifier = modifier
             .widthIn(max = 260.dp)

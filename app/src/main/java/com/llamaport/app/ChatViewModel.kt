@@ -35,12 +35,23 @@ data class ChatMessage(
     val role: String, // system | user | assistant | tool
     val text: String,
     val streaming: Boolean = false,
+    /** Legacy stats text kept for old saved sessions; new messages use [metrics]. */
     val stats: String? = null,
+    val metrics: MessageMetrics? = null,
     val isError: Boolean = false,
     val toolName: String? = null,
     val toolArgs: String? = null,
     val toolResult: String? = null,
     val attachments: List<Attachment> = emptyList(),
+)
+
+/** Per-answer performance numbers shown under an assistant message. */
+data class MessageMetrics(
+    val promptTokens: Int = 0,
+    val promptTokensPerSecond: Float = 0f,
+    val generatedTokens: Int = 0,
+    val generationTokensPerSecond: Float = 0f,
+    val durationMs: Long = 0L,
 )
 
 data class Settings(
@@ -368,6 +379,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 activeSessionTitle = sessions.firstOrNull { it.id == activeId }?.title
                     ?: state.activeSessionTitle,
             )
+        }
+        dirty = true
+    }
+
+    /** Fast path for live metrics: no session preview/title recomputation. */
+    private fun updateMessageMetrics(id: Long, transform: (MessageMetrics) -> MessageMetrics) {
+        _state.update { state ->
+            val messages = state.messages.map {
+                if (it.id == id) {
+                    it.copy(metrics = transform(it.metrics ?: MessageMetrics()))
+                } else {
+                    it
+                }
+            }
+            state.activeSessionId?.let { sessionMessages[it] = messages }
+            state.copy(messages = messages)
         }
         dirty = true
     }
@@ -1497,6 +1524,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                     )
                 }
+                // Under the answer: processing speed while the prompt is read,
+                // replaced by generation speed once tokens start arriving.
+                updateMessageMetrics(assistant.id) {
+                    it.copy(
+                        promptTokens = total,
+                        promptTokensPerSecond = tokensPerSecond,
+                    )
+                }
             }
 
             override fun onGenerationProgress(generated: Int, tokensPerSecond: Float) {
@@ -1510,6 +1545,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             total = 0,
                             tokensPerSecond = tokensPerSecond,
                         ),
+                    )
+                }
+                updateMessageMetrics(assistant.id) {
+                    it.copy(
+                        promptTokens = promptTokens,
+                        promptTokensPerSecond = promptSpeed,
+                        generatedTokens = generated,
+                        generationTokensPerSecond = tokensPerSecond,
                     )
                 }
             }
@@ -1578,19 +1621,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         startedAt: Long = System.nanoTime(),
     ) {
         val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
-        val stats = buildString {
-            if (promptTokens > 0 && promptSpeed > 0f) {
-                append(String.format(Locale.ROOT, "промпт %.1f tok/s", promptSpeed))
-            }
-            if (generated > 0) {
-                if (isNotEmpty()) append(" · ")
-                val speed = if (genSpeed > 0f) genSpeed else generated / seconds.coerceAtLeast(0.001)
-                append(String.format(Locale.ROOT, "%.1f tok/s · %d токенов", speed, generated))
-            } else if (wasCancelled) {
-                if (isNotEmpty()) append(" · ")
-                append("остановлено")
-            }
-        }.takeIf { it.isNotEmpty() }
+        val durationMs = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtLeast(0L)
+        val finalSpeed = when {
+            genSpeed > 0f -> genSpeed
+            generated > 0 -> (generated / seconds.coerceAtLeast(0.001)).toFloat()
+            else -> 0f
+        }
+        val metrics = if (generated > 0 || promptTokens > 0 || promptSpeed > 0f) {
+            MessageMetrics(
+                promptTokens = promptTokens.coerceAtLeast(0),
+                promptTokensPerSecond = promptSpeed.coerceAtLeast(0f),
+                generatedTokens = generated.coerceAtLeast(0),
+                generationTokensPerSecond = finalSpeed.coerceAtLeast(0f),
+                durationMs = durationMs,
+            )
+        } else {
+            null
+        }
         _state.update { it.copy(progress = null) }
         updateMessages { messages ->
             messages.map { message ->
@@ -1600,7 +1647,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     val text = if (fullText.isNotBlank()) fullText else message.text
                     message.copy(
                         streaming = false,
-                        stats = stats,
+                        stats = null,
+                        metrics = metrics ?: message.metrics,
                         isError = !wasCancelled && error != null,
                         text = when {
                             text.isNotBlank() -> text

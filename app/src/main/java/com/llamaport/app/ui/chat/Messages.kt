@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -64,6 +66,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import com.llamaport.app.Attachment
 import com.llamaport.app.ChatMessage
 import com.llamaport.app.MarkdownText
+import com.llamaport.app.MessageMetrics
 import com.llamaport.app.ThinkingParts
 import com.llamaport.app.UiState
 import com.llamaport.app.splitThinking
@@ -88,6 +92,7 @@ import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.disclosureEnter
 import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.MotionTokens
+import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.RobotAvatar
 import com.llamaport.app.ui.theme.ChatBubbleShape
 import java.io.File
@@ -133,7 +138,12 @@ internal fun MessageList(state: UiState) {
         }
     }
 
-    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text?.length) {
+    LaunchedEffect(
+        state.messages.size,
+        state.messages.lastOrNull()?.text?.length,
+        // When the live speed line appears, bring it into view as well.
+        state.messages.lastOrNull()?.metrics != null,
+    ) {
         if (autoFollow && state.messages.isNotEmpty()) {
             withFrameNanos { }
             jumpToBottom()
@@ -361,14 +371,7 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
                     }
                 }
 
-                message.stats?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                AnswerMetrics(message)
             }
             MessageActionsMenu(
                 expanded = menuOpen,
@@ -379,6 +382,117 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
             )
         }
     }
+}
+
+/** Live speed while the answer streams; a token-count button once it is done. */
+@Composable
+private fun AnswerMetrics(message: ChatMessage) {
+    if (message.streaming) {
+        val metrics = message.metrics ?: return
+        val speed = if (metrics.generatedTokens > 0) {
+            metrics.generationTokensPerSecond
+        } else {
+            metrics.promptTokensPerSecond
+        }
+        if (speed > 0f) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = String.format(Locale.ROOT, "%.1f tok/s", speed),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else {
+        val metrics = message.metrics ?: return
+        if (metrics.generatedTokens > 0) {
+            Spacer(Modifier.height(2.dp))
+            MessageMetricsButton(metrics)
+        }
+    }
+}
+
+@Composable
+private fun MessageMetricsButton(metrics: MessageMetrics) {
+    var detailsOpen by remember { mutableStateOf(false) }
+    Surface(
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.primary,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.pressable(onClick = { detailsOpen = true }),
+    ) {
+        Text(
+            text = tokenCount(metrics.generatedTokens),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+    if (detailsOpen) {
+        MessageMetricsDialog(metrics = metrics, onDismiss = { detailsOpen = false })
+    }
+}
+
+@Composable
+private fun MessageMetricsDialog(metrics: MessageMetrics, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Статистика ответа") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricsRow("Обработка промпта", formatSpeed(metrics.promptTokensPerSecond))
+                MetricsRow("Токенов в промпте", metrics.promptTokens.toString())
+                MetricsRow("Генерация", formatSpeed(metrics.generationTokensPerSecond))
+                MetricsRow("Сгенерировано", tokenCount(metrics.generatedTokens))
+                MetricsRow("Время", formatElapsed(metrics.durationMs))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        },
+    )
+}
+
+@Composable
+private fun MetricsRow(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(value, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+private fun formatSpeed(tokensPerSecond: Float): String =
+    if (tokensPerSecond > 0f) {
+        String.format(Locale.ROOT, "%.1f tok/s", tokensPerSecond)
+    } else {
+        "—"
+    }
+
+private fun formatElapsed(milliseconds: Long): String {
+    val seconds = milliseconds / 1000.0
+    return if (seconds < 60.0) {
+        String.format(Locale.ROOT, "%.1f с", seconds)
+    } else {
+        String.format(Locale.ROOT, "%d:%04.1f", (seconds / 60).toInt(), seconds % 60.0)
+    }
+}
+
+private fun tokenCount(count: Int): String {
+    val word = when {
+        count % 100 in 11..14 -> "токенов"
+        count % 10 == 1 -> "токен"
+        count % 10 in 2..4 -> "токена"
+        else -> "токенов"
+    }
+    return "$count $word"
 }
 
 @Composable

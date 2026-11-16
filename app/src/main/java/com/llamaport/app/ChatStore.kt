@@ -133,6 +133,18 @@ class ChatStore(filesDir: File) {
         put("role", message.role)
         put("text", message.text)
         put("stats", message.stats ?: JSONObject.NULL)
+        put(
+            "metrics",
+            message.metrics?.let { metrics ->
+                JSONObject().apply {
+                    put("promptTokens", metrics.promptTokens)
+                    put("promptTokensPerSecond", metrics.promptTokensPerSecond.toDouble())
+                    put("generatedTokens", metrics.generatedTokens)
+                    put("generationTokensPerSecond", metrics.generationTokensPerSecond.toDouble())
+                    put("durationMs", metrics.durationMs)
+                }
+            } ?: JSONObject.NULL,
+        )
         put("isError", message.isError)
         put("toolName", message.toolName ?: JSONObject.NULL)
         put("toolArgs", message.toolArgs ?: JSONObject.NULL)
@@ -163,12 +175,22 @@ class ChatStore(filesDir: File) {
                 mime = a.optString("mime", ""),
             )
         }
+        val metrics = obj.optJSONObject("metrics")?.let { m ->
+            MessageMetrics(
+                promptTokens = m.optInt("promptTokens", 0),
+                promptTokensPerSecond = m.optDouble("promptTokensPerSecond", 0.0).toFloat(),
+                generatedTokens = m.optInt("generatedTokens", 0),
+                generationTokensPerSecond = m.optDouble("generationTokensPerSecond", 0.0).toFloat(),
+                durationMs = m.optLong("durationMs", 0L),
+            )
+        }
         return ChatMessage(
             id = obj.optLong("id", System.nanoTime()),
             role = obj.optString("role", "user"),
             text = obj.optString("text", ""),
             streaming = false,
             stats = obj.optString("stats").takeIf { it.isNotBlank() && it != "null" },
+            metrics = metrics,
             isError = obj.optBoolean("isError", false),
             toolName = obj.optString("toolName").takeIf { it.isNotBlank() && it != "null" },
             toolArgs = obj.optString("toolArgs").takeIf { it.isNotBlank() && it != "null" },

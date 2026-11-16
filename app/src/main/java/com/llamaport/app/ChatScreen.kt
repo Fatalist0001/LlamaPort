@@ -108,8 +108,7 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.settings.SettingsSheet
-import com.llamaport.app.ui.theme.ModelChipShape
-import com.llamaport.app.ui.theme.SmallModelChipShape
+import com.llamaport.app.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -619,7 +618,7 @@ private fun ChatInputBar(
 private fun SpeedChip(tokensPerSecond: Float) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = ModelChipShape,
+        shape = PillShape,
     ) {
         Row(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -760,7 +759,7 @@ private fun shortRelativeTime(timestamp: Long): String {
 private fun SessionModelBadge(name: String) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shape = SmallModelChipShape,
+        shape = MaterialTheme.shapes.extraSmall,
     ) {
         Text(
             name.substringBeforeLast('.').take(18),
