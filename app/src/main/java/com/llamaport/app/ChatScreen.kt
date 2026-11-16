@@ -108,7 +108,6 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.settings.SettingsSheet
-import com.llamaport.app.ui.theme.LocalPixelFont
 import com.llamaport.app.ui.theme.ModelChipShape
 import com.llamaport.app.ui.theme.SmallModelChipShape
 import kotlinx.coroutines.Dispatchers
@@ -628,9 +627,7 @@ private fun SpeedChip(tokensPerSecond: Float) {
         ) {
             AnimatedNumber(
                 value = (tokensPerSecond * 10f).roundToInt(),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = LocalPixelFont.current,
-                ),
+                style = MaterialTheme.typography.labelSmall,
                 format = { String.format(Locale.ROOT, "%.1f t/s", it / 10f) },
             )
         }

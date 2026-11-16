@@ -8,7 +8,6 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
@@ -108,13 +107,9 @@ fun LlamaPortTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
-    val pixelFont = rememberPixelFontFamily()
-
-    CompositionLocalProvider(LocalPixelFont provides pixelFont) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            shapes = LlamaShapes,
-            content = content,
-        )
-    }
+    MaterialTheme(
+        colorScheme = colorScheme,
+        shapes = LlamaShapes,
+        content = content,
+    )
 }

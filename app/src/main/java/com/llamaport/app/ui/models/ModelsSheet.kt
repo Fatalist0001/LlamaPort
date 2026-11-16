@@ -59,7 +59,6 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
-import com.llamaport.app.ui.theme.LocalPixelFont
 import com.llamaport.app.ui.theme.PillShape
 import java.io.File
 
@@ -388,9 +387,7 @@ private fun ModelCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         formatSize(file.length()),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = LocalPixelFont.current,
-                        ),
+                        style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
                     quantLabel(file.name)?.let { quant ->
@@ -495,9 +492,7 @@ private fun ProjectorRow(
                 )
                 Text(
                     formatSize(file.length()),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = LocalPixelFont.current,
-                    ),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -569,26 +564,23 @@ private fun Legend(
     mb: Long,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .background(color, CircleShape),
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(color, CircleShape),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(4.dp))
         AnimatedNumber(
             value = mb.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = LocalPixelFont.current,
-            ),
+            style = MaterialTheme.typography.labelSmall,
             format = { formatRam(it.toLong()) },
         )
     }

@@ -55,11 +55,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.llamaport.app.Settings
 import com.llamaport.app.UiState
 import com.llamaport.app.ui.AppIcons
@@ -71,7 +71,6 @@ import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
 import com.llamaport.app.ui.motion.pressable
-import com.llamaport.app.ui.theme.LocalPixelFont
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
@@ -843,9 +842,8 @@ private fun <T> ExactNumberField(
         onValueChange = { draft = it },
         singleLine = true,
         textStyle = MaterialTheme.typography.labelLarge.copy(
-            fontFamily = LocalPixelFont.current,
-            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),

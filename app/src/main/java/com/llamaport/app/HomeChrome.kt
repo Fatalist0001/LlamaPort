@@ -59,7 +59,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
@@ -68,7 +67,6 @@ import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
-import com.llamaport.app.ui.theme.LocalPixelFont
 import com.llamaport.app.ui.theme.ModelChipShape
 import kotlin.math.PI
 import kotlin.math.sin
@@ -197,10 +195,8 @@ internal fun AppDrawer(
                     Column {
                         Text(
                             "LlamaPort",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontFamily = LocalPixelFont.current,
-                                fontSize = 18.sp,
-                            ),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             state.modelName ?: "модель не загружена",
@@ -452,10 +448,8 @@ internal fun HomeEmptyState(
         Reveal(index = 1) {
             Text(
                 "LlamaPort",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontFamily = LocalPixelFont.current,
-                    fontSize = 26.sp,
-                ),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
             )
         }
         Spacer(Modifier.height(6.dp))
