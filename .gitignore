@@ -30,6 +30,14 @@ local.properties
 *.log
 *.aab
 
+# Models and signing material that must never be committed
+*.gguf
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
 # Personal notes / exports not part of the project
 freebuff-chat-*.md
 session-*.json
