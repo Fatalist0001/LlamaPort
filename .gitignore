@@ -32,3 +32,5 @@ local.properties
 
 # Personal notes / exports not part of the project
 freebuff-chat-*.md
+session-*.json
+sessions.json

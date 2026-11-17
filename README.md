@@ -5,7 +5,8 @@ Android-порт [llama.cpp](https://github.com/ggml-org/llama.cpp) с граф�
 
 ## Что внутри
 
-- `llama.cpp/` — исходники llama.cpp **b12129** (последний на момент сборки).
+- `llama.cpp/` — исходники llama.cpp **b12129**; в репозиторий не входят, их нужно
+  распаковать в эту папку (см. «Подготовка окружения»).
 - `app/` — Android-приложение (`com.llamaport.app`).
   - `MainActivity.kt` — точка входа.
   - `ChatViewModel.kt` — состояние чата, сессии, импорт и загрузка моделей, генерация.
@@ -19,11 +20,42 @@ Android-порт [llama.cpp](https://github.com/ggml-org/llama.cpp) с граф�
 - `scripts/build-apk.sh` — сборка debug APK.
 - `scripts/build-release.sh` — сборка подписанного release APK (R8 + shrinkResources).
 - `scripts/gradle.sh` — локальный Gradle 8.9 + JDK 21.
-- `.sdk/` — Android SDK/NDK, скачанные в папку проекта.
-- `toolchain/` — JDK 21 и Gradle 8.9.
+- `.sdk/` — Android SDK/NDK (локальная установка, в репозиторий не входит).
+- `toolchain/` — JDK 21 и Gradle 8.9 (локальная установка, в репозиторий не входит).
 
-Всё, что нужно для сборки, лежит внутри проекта: `ANDROID_HOME`, `GRADLE_USER_HOME`
-и `JAVA_HOME` указывают на локальные каталоги, ничего не пишется в домашнюю папку.
+Скрипты из `scripts/` ищут `ANDROID_HOME`, `GRADLE_USER_HOME` и `JAVA_HOME`
+внутри каталога проекта, поэтому ничего не пишется в домашнюю папку.
+
+## Подготовка окружения
+
+В репозитории нет бинарных зависимостей — их нужно положить локально (все эти
+каталоги перечислены в `.gitignore`):
+
+1. **JDK 21** — распаковать в `toolchain/jdk` (Adoptium Temurin 21).
+2. **Gradle 8.9** — распаковать в `toolchain/gradle-8.9`
+   ([gradle.org/releases](https://gradle.org/releases/)).
+3. **Android SDK** — `platforms/android-35`, `build-tools/35.0.0`,
+   `platform-tools` и `ndk/28.2.13676358` в `.sdk/`.
+4. **Исходники llama.cpp b12129** — в `llama.cpp/`:
+   ```bash
+   curl -L https://github.com/ggml-org/llama.cpp/archive/refs/tags/b12129.tar.gz \
+     | tar -xz -C llama.cpp --strip-components=1
+   ```
+5. **QuickJS** уже лежит в репозитории: `third_party/quickjs` (MIT).
+6. **Ключ подписи** — `keystore/llamaport-release.jks` и `keystore.properties`
+   (не коммитятся, образец полей — ниже).
+
+`keystore.properties`:
+
+```properties
+storeFile=keystore/llamaport-release.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+Без этого файла `scripts/build-release.sh` не найдёт ожидаемый подписанный APK;
+debug-сборка от ключа не зависит.
 
 ## Сборка
 
@@ -85,8 +117,10 @@ adb shell "run-as com.llamaport.app cp /data/local/tmp/model.gguf files/models/"
   размышлений с количеством символов;
 - вложения: изображения и аудио (wav/mp3/flac) через `libmtmd`; изображение
   показывается в сообщении, аудио можно прослушать;
-- индикатор обработки промпта в реальном времени: прогресс по токенам и скорость
-  (`Промпт 128/322 · 61 tok/s`), плюс текущая скорость генерации;
+- живая статистика под ответом: во время обработки промпта показывается скорость
+  обработки, затем она сменяется скоростью генерации; после завершения остаётся
+  кнопка «N токенов», открывающая диалог с полными цифрами (скорость обработки,
+  токены промпта, скорость генерации, время);
 - текстовый KV-кэш хранит два снимка: префикс промпта и состояние после
   генерации (включая видимый ответ); блоки размышлений в контекст не
   возвращаются, поэтому для моделей с `thinking` используется запасной
@@ -114,8 +148,9 @@ adb shell "run-as com.llamaport.app cp /data/local/tmp/model.gguf files/models/"
 - Изображения и аудио декодируются `libmtmd` (`mtmd_helper_bitmap_init_from_buf`,
   stb_image/miniaudio), в промпт подставляется маркер `<__media__>`, а
   `mtmd_helper_eval_chunks` считает M-RoPE и позиции.
-- Реальный максимум контекста читается из GGUF (`*.context_length`); слайдер
-  ограничен этим значением, а KV-кэш масштабируется для оценки памяти.
+- Реальный максимум контекста читается из GGUF (`*.context_length`) и
+  показывается как рекомендация: слайдер идёт до 262144, при превышении
+  появляется предупреждение. KV-кэш масштабируется для оценки памяти.
 - Сессии пишутся в `sessions.json` атомарно и только на контрольных точках, не
   на каждом токене.
 - `minSdk 26`, `targetSdk 34`, `compileSdk 35`; ABI — `arm64-v8a`.
