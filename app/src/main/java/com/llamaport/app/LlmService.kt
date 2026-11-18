@@ -104,6 +104,9 @@ class LlmService : Service() {
             topK: Int,
             seed: Int,
             mediaPaths: Array<String>?,
+            basePrompt: ByteArray?,
+            baseFingerprint: ByteArray?,
+            baseCachePath: String?,
             callback: ILlmCallback?,
         ): Int {
             synchronized(ioLock) {
@@ -158,6 +161,9 @@ class LlmService : Service() {
                         topK,
                         seed,
                         mediaPaths ?: emptyArray(),
+                        basePrompt ?: ByteArray(0),
+                        baseFingerprint ?: ByteArray(0),
+                        baseCachePath ?: "",
                         tokenCallback,
                     )
                     if (generated < 0 && generated != -2) {

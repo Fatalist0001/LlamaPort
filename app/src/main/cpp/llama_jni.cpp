@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "llama.h"
@@ -70,6 +71,17 @@ struct Session {
     // the whole previous answer instead of re-evaluating it.
     CacheSlot prompt_cache;
     CacheSlot full_cache;
+
+    // The base slot contains the immutable system block (system prompt plus
+    // tool instructions and the thinking instruction). It is captured at the
+    // first prefill and persisted, so a fresh app start or a chat switch does
+    // not re-evaluate it. Unlike the other slots it survives prefix mismatches.
+    CacheSlot base_cache;
+    std::vector<llama_token> base_tokens;
+    std::vector<uint8_t>     base_fingerprint;
+    std::string              base_cache_path;
+    bool                     base_load_attempted = false;
+    std::thread              base_save_thread;
 };
 
 inline Session * from_handle(jlong h) {
@@ -178,6 +190,258 @@ bool try_restore_cache(Session * s, CacheSlot & slot,
     return true;
 }
 
+// Base-cache files are scoped to a model and validated by a 32-byte
+// fingerprint computed in Kotlin from the model, mmproj, context, KV type,
+// Flash Attention, system prompt and tool prompt. The header also repeats the
+// effective runtime KV layout, because a q8_0 request may silently fall back
+// to f16 and a state recorded with one layout cannot be restored into another.
+constexpr uint32_t kBaseCacheVersion = 1;
+constexpr size_t kBaseCacheFingerprintBytes = 32;
+constexpr size_t kBaseCacheHeaderBytes =
+    4 + 4 + kBaseCacheFingerprintBytes + 4 + 8 + 4 + 4 + 4;
+constexpr char kBaseCacheMagic[4] = {'L', 'P', 'B', 'C'};
+constexpr size_t kMinBaseCacheTokens = 8;
+
+bool read_base_bytes(FILE * f, void * out, size_t size) {
+    return std::fread(out, 1, size, f) == size;
+}
+
+bool write_base_bytes(FILE * f, const void * data, size_t size) {
+    return std::fwrite(data, 1, size, f) == size;
+}
+
+bool write_base_cache_file(const std::string & path,
+                           const std::vector<uint8_t> & fingerprint,
+                           uint32_t token_count,
+                           const std::vector<uint8_t> & state,
+                           int kv_type, int flash_attn, int n_ctx) {
+    if (path.empty() || fingerprint.size() != kBaseCacheFingerprintBytes ||
+        state.empty()) {
+        return false;
+    }
+
+    const std::string tmp_path = path + ".tmp";
+    FILE * f = std::fopen(tmp_path.c_str(), "wb");
+    if (f == nullptr) {
+        LOGI("cache: cannot open base cache file %s", tmp_path.c_str());
+        return false;
+    }
+
+    const uint32_t version = kBaseCacheVersion;
+    const uint64_t state_size = state.size();
+    const uint32_t kv = static_cast<uint32_t>(kv_type);
+    const uint32_t fa = static_cast<uint32_t>(flash_attn);
+    const uint32_t ctx = static_cast<uint32_t>(n_ctx);
+
+    bool ok = write_base_bytes(f, kBaseCacheMagic, sizeof(kBaseCacheMagic)) &&
+              write_base_bytes(f, &version, sizeof(version)) &&
+              write_base_bytes(f, fingerprint.data(), fingerprint.size()) &&
+              write_base_bytes(f, &token_count, sizeof(token_count)) &&
+              write_base_bytes(f, &state_size, sizeof(state_size)) &&
+              write_base_bytes(f, &kv, sizeof(kv)) &&
+              write_base_bytes(f, &fa, sizeof(fa)) &&
+              write_base_bytes(f, &ctx, sizeof(ctx)) &&
+              write_base_bytes(f, state.data(), state.size());
+    if (ok) {
+        ok = std::fflush(f) == 0 && fsync(fileno(f)) == 0;
+    }
+    std::fclose(f);
+
+    if (!ok) {
+        std::remove(tmp_path.c_str());
+        return false;
+    }
+    if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
+        std::remove(tmp_path.c_str());
+        return false;
+    }
+    return true;
+}
+
+void remove_base_cache_file(Session * s) {
+    if (!s->base_cache_path.empty()) {
+        std::remove(s->base_cache_path.c_str());
+    }
+}
+
+bool load_base_cache_file(Session * s) {
+    if (s->base_cache_path.empty() ||
+        s->base_fingerprint.size() != kBaseCacheFingerprintBytes ||
+        s->base_tokens.empty()) {
+        return false;
+    }
+
+    FILE * f = std::fopen(s->base_cache_path.c_str(), "rb");
+    if (f == nullptr) {
+        LOGI("cache: base cache file not found");
+        return false;
+    }
+
+    char magic[4] = {0};
+    uint32_t version = 0;
+    uint8_t fingerprint[kBaseCacheFingerprintBytes] = {0};
+    uint32_t token_count = 0;
+    uint64_t state_size = 0;
+    uint32_t kv_type = 0;
+    uint32_t flash_attn = 0;
+    uint32_t n_ctx = 0;
+
+    bool ok = read_base_bytes(f, magic, sizeof(magic)) &&
+              std::memcmp(magic, kBaseCacheMagic, sizeof(magic)) == 0 &&
+              read_base_bytes(f, &version, sizeof(version)) &&
+              read_base_bytes(f, fingerprint, sizeof(fingerprint)) &&
+              read_base_bytes(f, &token_count, sizeof(token_count)) &&
+              read_base_bytes(f, &state_size, sizeof(state_size)) &&
+              read_base_bytes(f, &kv_type, sizeof(kv_type)) &&
+              read_base_bytes(f, &flash_attn, sizeof(flash_attn)) &&
+              read_base_bytes(f, &n_ctx, sizeof(n_ctx));
+
+    if (!ok) {
+        LOGI("cache: base cache header is truncated");
+        std::fclose(f);
+        remove_base_cache_file(s);
+        return false;
+    }
+
+    const bool matches = version == kBaseCacheVersion &&
+        std::memcmp(fingerprint, s->base_fingerprint.data(),
+                    kBaseCacheFingerprintBytes) == 0 &&
+        token_count > 0 && token_count <= s->base_tokens.size() &&
+        state_size > 0 && state_size <= kMaxCacheStateBytes &&
+        kv_type == static_cast<uint32_t>(s->kv_type) &&
+        flash_attn == static_cast<uint32_t>(s->flash_attn) &&
+        n_ctx == static_cast<uint32_t>(llama_n_ctx(s->ctx));
+
+    if (!matches) {
+        LOGI("cache: base cache fingerprint/layout mismatch, rebuilding");
+        std::fclose(f);
+        remove_base_cache_file(s);
+        return false;
+    }
+
+    const off_t end = fseeko(f, 0, SEEK_END) == 0 ? ftello(f) : -1;
+    const bool size_ok = end >= 0 &&
+        static_cast<uint64_t>(end) == kBaseCacheHeaderBytes + state_size;
+    if (!size_ok || fseeko(f, static_cast<off_t>(kBaseCacheHeaderBytes), SEEK_SET) != 0) {
+        LOGI("cache: base cache file has an unexpected size");
+        std::fclose(f);
+        remove_base_cache_file(s);
+        return false;
+    }
+
+    std::vector<uint8_t> state(static_cast<size_t>(state_size));
+    if (!read_base_bytes(f, state.data(), state.size())) {
+        std::fclose(f);
+        remove_base_cache_file(s);
+        return false;
+    }
+    std::fclose(f);
+
+    // The state is loaded lazily: it is applied to the KV cache only when the
+    // current prompt actually starts with it. This avoids touching the cache
+    // for chats that need a different prefix.
+    s->base_cache.tokens.assign(
+        s->base_tokens.begin(),
+        s->base_tokens.begin() + static_cast<ptrdiff_t>(token_count));
+    s->base_cache.state = std::move(state);
+    s->base_cache.valid = true;
+    LOGI("cache: loaded %u tokens from base cache file (state %.2f MiB)",
+         token_count, s->base_cache.state.size() / 1048576.0);
+    return true;
+}
+
+void save_base_cache_file_async(Session * s) {
+    if (s->base_cache_path.empty() ||
+        s->base_fingerprint.size() != kBaseCacheFingerprintBytes ||
+        !s->base_cache.valid || s->base_cache.tokens.empty() ||
+        s->base_cache.state.empty()) {
+        return;
+    }
+    if (s->base_save_thread.joinable()) {
+        s->base_save_thread.join();
+    }
+
+    std::string path = s->base_cache_path;
+    std::vector<uint8_t> fingerprint = s->base_fingerprint;
+    const uint32_t token_count =
+        static_cast<uint32_t>(s->base_cache.tokens.size());
+    std::vector<uint8_t> state = s->base_cache.state;
+    const int kv_type = s->kv_type;
+    const int flash_attn = s->flash_attn;
+    const int n_ctx = static_cast<int>(llama_n_ctx(s->ctx));
+
+    s->base_save_thread = std::thread(
+        [path = std::move(path), fingerprint = std::move(fingerprint),
+         token_count, state = std::move(state), kv_type, flash_attn, n_ctx]() {
+            const bool ok = write_base_cache_file(
+                path, fingerprint, token_count, state, kv_type, flash_attn, n_ctx);
+            LOGI("cache: base cache file %s (%u tokens, %.2f MiB)",
+                 ok ? "saved" : "save failed", token_count,
+                 state.size() / 1048576.0);
+        });
+}
+
+void configure_base_cache(Session * s, std::vector<llama_token> base_tokens,
+                          std::vector<uint8_t> fingerprint,
+                          const std::string & path) {
+    if (fingerprint != s->base_fingerprint || path != s->base_cache_path) {
+        if (s->base_save_thread.joinable()) {
+            s->base_save_thread.join();
+        }
+        s->base_cache.clear();
+        s->base_fingerprint = std::move(fingerprint);
+        s->base_cache_path = path;
+        s->base_load_attempted = false;
+    }
+    s->base_tokens = std::move(base_tokens);
+}
+
+// The base slot is shared by every chat and must survive a prompt that does
+// not start with it (for example a trimmed prompt). A mismatch is therefore
+// not a reason to drop the saved state.
+bool try_restore_base_cache(Session * s, const std::vector<llama_token> & tokens,
+                            size_t & prefix_len) {
+    CacheSlot & slot = s->base_cache;
+    if (!slot.valid || slot.tokens.empty() || slot.state.empty()) {
+        return false;
+    }
+
+    const size_t common = common_prefix_len(slot.tokens, tokens);
+    if (common < slot.tokens.size() || common >= tokens.size()) {
+        LOGI("prompt: base cache mismatch (common=%zu, cached=%zu, prompt=%zu), kept",
+             common, slot.tokens.size(), tokens.size());
+        return false;
+    }
+
+    const size_t restored = llama_state_seq_set_data(
+        s->ctx, slot.state.data(), slot.state.size(), 0);
+    if (restored == 0) {
+        LOGE("llama_state_seq_set_data failed for base cache, dropping");
+        remove_base_cache_file(s);
+        slot.clear();
+        return false;
+    }
+
+    prefix_len = common;
+    LOGI("prompt: restored %zu tokens from base cache (state %.2f MiB)",
+         prefix_len, slot.state.size() / 1048576.0);
+    return true;
+}
+
+void capture_base_cache(Session * s, const std::vector<llama_token> & tokens,
+                        size_t prefix_len) {
+    if (prefix_len < kMinBaseCacheTokens) {
+        return;
+    }
+
+    std::vector<llama_token> prefix_tokens(
+        tokens.begin(), tokens.begin() + static_cast<ptrdiff_t>(prefix_len));
+    if (save_cache_slot(s->base_cache, s->ctx, prefix_tokens,
+                        kMaxCacheStateBytes, "base")) {
+        save_base_cache_file_async(s);
+    }
+}
+
 inline int64_t file_size_bytes(const std::string & path) {
     struct stat st{};
     if (stat(path.c_str(), &st) != 0) {
@@ -253,6 +517,19 @@ jbyteArray make_bytes(JNIEnv * env, const void * data, size_t size) {
 
 jbyteArray empty_bytes(JNIEnv * env) {
     return env->NewByteArray(0);
+}
+
+std::vector<uint8_t> jbytes_to_vector(JNIEnv * env, jbyteArray arr) {
+    if (arr == nullptr) {
+        return {};
+    }
+    const jsize size = env->GetArrayLength(arr);
+    if (size <= 0) {
+        return {};
+    }
+    std::vector<uint8_t> out(static_cast<size_t>(size));
+    env->GetByteArrayRegion(arr, 0, size, reinterpret_cast<jbyte *>(out.data()));
+    return out;
 }
 
 // Returns the length of the longest prefix that ends on a complete UTF-8 sequence.
@@ -750,6 +1027,9 @@ Java_com_llamaport_app_LlamaBridge_freeModel(JNIEnv *, jclass, jlong handle) {
         return;
     }
     s->cancel = true;
+    if (s->base_save_thread.joinable()) {
+        s->base_save_thread.join();
+    }
     if (s->ctx != nullptr) {
         llama_free(s->ctx);
         s->ctx = nullptr;
@@ -885,7 +1165,9 @@ JNIEXPORT jint JNICALL
 Java_com_llamaport_app_LlamaBridge_generate(
         JNIEnv * env, jclass, jlong handle, jbyteArray jprompt,
         jint max_tokens, jfloat temp, jfloat top_p, jint top_k, jint seed,
-        jobjectArray jmedia_paths, jobject callback) {
+        jobjectArray jmedia_paths, jbyteArray jbase_prompt,
+        jbyteArray jbase_fingerprint, jstring jbase_cache_path,
+        jobject callback) {
     Session * s = from_handle(handle);
     if (s == nullptr || s->ctx == nullptr || s->vocab == nullptr) {
         return -1;
@@ -919,6 +1201,20 @@ Java_com_llamaport_app_LlamaBridge_generate(
         }
     }
 
+    const std::vector<uint8_t> base_prompt_bytes =
+        jbytes_to_vector(env, jbase_prompt);
+    std::vector<llama_token> base_prompt_tokens;
+    if (!base_prompt_bytes.empty()) {
+        const std::string base_prompt_text(
+            base_prompt_bytes.begin(), base_prompt_bytes.end());
+        base_prompt_tokens = tokenize(s->vocab, base_prompt_text, true);
+    }
+    std::vector<uint8_t> base_fingerprint =
+        jbytes_to_vector(env, jbase_fingerprint);
+    const std::string base_cache_path = jstring_to_utf8(env, jbase_cache_path);
+    configure_base_cache(s, std::move(base_prompt_tokens),
+                         std::move(base_fingerprint), base_cache_path);
+
     std::vector<llama_token> tokens = tokenize(s->vocab, prompt, true);
     if (tokens.empty()) {
         LOGE("empty prompt after tokenization");
@@ -942,6 +1238,10 @@ Java_com_llamaport_app_LlamaBridge_generate(
         prompt_trimmed = true;
     }
 
+    const size_t base_prefix = s->base_tokens.empty()
+        ? 0
+        : common_prefix_len(s->base_tokens, tokens);
+
     llama_memory_t mem = llama_get_memory(s->ctx);
     size_t prefix_len = 0;
 
@@ -958,16 +1258,26 @@ Java_com_llamaport_app_LlamaBridge_generate(
         // answer was re-tokenized differently (or thinking was stripped from
         // the next prompt), fall back to the prompt-only snapshot. Recurrent
         // models such as LFM3 cannot roll back to an arbitrary common prefix,
-        // so only a clean extension of a saved prefix is accepted.
+        // so only a clean extension of a saved prefix is accepted. The base
+        // slot is the last resort: it only covers the system block, but it is
+        // shared by every chat and survives restarts.
         if (try_restore_cache(s, s->full_cache, tokens, prefix_len, "full")) {
             s->prompt_cache.clear();
         } else if (try_restore_cache(s, s->prompt_cache, tokens, prefix_len, "prompt")) {
             s->full_cache.clear();
         } else {
-            if (mem != nullptr) {
-                llama_memory_clear(mem, true);
+            if (!s->base_cache.valid && !s->base_load_attempted) {
+                s->base_load_attempted = true;
+                load_base_cache_file(s);
             }
-            clear_all_caches(s);
+            if (!try_restore_base_cache(s, tokens, prefix_len)) {
+                if (mem != nullptr) {
+                    llama_memory_clear(mem, true);
+                }
+                clear_all_caches(s);
+            } else {
+                clear_all_caches(s);
+            }
         }
     } else {
         if (mem != nullptr) {
@@ -977,8 +1287,8 @@ Java_com_llamaport_app_LlamaBridge_generate(
     }
 
     if (media_paths.empty()) {
-        LOGI("prompt: %zu tokens, cache hit %zu, evaluate %zu",
-             tokens.size(), prefix_len, tokens.size() - prefix_len);
+        LOGI("prompt: %zu tokens, cache hit %zu, evaluate %zu, base boundary %zu",
+             tokens.size(), prefix_len, tokens.size() - prefix_len, base_prefix);
     }
 
     // Optional callback methods.
@@ -1111,18 +1421,39 @@ Java_com_llamaport_app_LlamaBridge_generate(
         // exactly the reusable prefix; the final token is decoded afterwards so
         // the sampler has fresh logits.
         const size_t n_prefix_eval = tokens.size() - 1;
-        for (size_t i = prefix_len; i < n_prefix_eval; i += static_cast<size_t>(n_chunk)) {
+        // Capture the base slot exactly at the system-block boundary during the
+        // first prefill. These tokens are evaluated anyway, so this adds no
+        // work; the snapshot is written to disk asynchronously afterwards.
+        size_t base_capture_at = 0;
+        if (!prompt_trimmed && prefix_len == 0 && !s->base_cache.valid &&
+            base_prefix >= kMinBaseCacheTokens &&
+            base_prefix <= n_prefix_eval) {
+            base_capture_at = base_prefix;
+        }
+
+        size_t pos = prefix_len;
+        while (pos < n_prefix_eval) {
+            if (base_capture_at != 0 && pos == base_capture_at) {
+                capture_base_cache(s, tokens, pos);
+                base_capture_at = 0;
+                continue;
+            }
             if (s->cancel) {
                 return -2;
             }
+            size_t limit = n_prefix_eval;
+            if (base_capture_at != 0 && base_capture_at > pos) {
+                limit = std::min(limit, base_capture_at);
+            }
             const int32_t n = static_cast<int32_t>(
-                std::min<size_t>(static_cast<size_t>(n_chunk), n_prefix_eval - i));
-            llama_batch batch = llama_batch_get_one(tokens.data() + i, n);
+                std::min<size_t>(static_cast<size_t>(n_chunk), limit - pos));
+            llama_batch batch = llama_batch_get_one(tokens.data() + pos, n);
             const int32_t rc = llama_decode(s->ctx, batch);
             if (rc != 0) {
                 LOGE("prompt decode failed: %d", rc);
                 return rc == 2 ? -2 : -3;
             }
+            pos += static_cast<size_t>(n);
             processed_new += n;
             if (on_prompt_progress != nullptr) {
                 const double elapsed = std::chrono::duration<double>(
@@ -1135,6 +1466,9 @@ Java_com_llamaport_app_LlamaBridge_generate(
                     env->ExceptionClear();
                 }
             }
+        }
+        if (base_capture_at != 0 && pos == base_capture_at) {
+            capture_base_cache(s, tokens, pos);
         }
 
         if (mem != nullptr && n_prefix_eval > 0) {

@@ -7,7 +7,7 @@ interface ILlmService {
     int load(String path, int nCtx, int threads, int threadsBatch, boolean useMmap, int kvType, int flashAttn, int nBatch, int nUbatch, String mmprojPath);
 
     /** Blocking generation call. Returns generated token count or a negative error code. */
-    int generate(in byte[] prompt, int maxTokens, float temp, float topP, int topK, int seed, in String[] mediaPaths, ILlmCallback callback);
+    int generate(in byte[] prompt, int maxTokens, float temp, float topP, int topK, int seed, in String[] mediaPaths, in byte[] basePrompt, in byte[] baseFingerprint, String baseCachePath, ILlmCallback callback);
 
     void stop();
 

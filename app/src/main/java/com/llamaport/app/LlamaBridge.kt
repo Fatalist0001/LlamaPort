@@ -88,6 +88,11 @@ object LlamaBridge {
 
     /**
      * Generates tokens into [callback].
+     * @param basePrompt system-only portion of the prompt, used to build and
+     *   restore the persistent base cache; may be empty to disable it
+     * @param baseFingerprint 32-byte SHA-256 cache key; empty to disable it
+     * @param baseCachePath file used to persist the base cache; empty to keep
+     *   the base snapshot in RAM only
      * Returns number of generated tokens, or a negative value on error/abort.
      */
     external fun generate(
@@ -99,6 +104,9 @@ object LlamaBridge {
         topK: Int,
         seed: Int,
         mediaPaths: Array<String>,
+        basePrompt: ByteArray,
+        baseFingerprint: ByteArray,
+        baseCachePath: String,
         callback: TokenCallback,
     ): Int
 

@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -157,6 +158,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         const val MEDIA_MARKER = "\u003c__media__\u003e"
         const val THINK_OPEN = "\u003cthink\u003e"
         const val THINK_CLOSE = "\u003c/think\u003e"
+        /** Bump together with the native base-cache format. */
+        const val BASE_CACHE_FORMAT = "llamaport-base-v1"
+        const val LLAMA_BUILD = "b12129"
+        const val BASE_CACHE_KEEP_FILES = 3
         val HEAVY_PACKAGES = listOf(
             "com.android.chrome",
             "com.google.android.youtube",
@@ -176,6 +181,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val appContext = app.applicationContext
     private val modelsDir: File = File(app.filesDir, "models").apply { mkdirs() }
     private val attachmentsDir: File = File(app.filesDir, "attachments").apply { mkdirs() }
+    private val promptCacheDir: File = File(app.filesDir, "prompt_cache").apply { mkdirs() }
     private val chatStore = ChatStore(app.filesDir)
     private val sessionMessages = java.util.concurrent.ConcurrentHashMap<String, List<ChatMessage>>()
     private val activityManager = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -796,6 +802,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(error = "Сначала выгрузите модель, использующую этот mmproj") }
             return
         }
+        runCatching { baseCacheFile(file).delete() }
         file.delete()
         refreshModels()
     }
@@ -1575,7 +1582,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 settings.thinkingBudget,
             )
             val maxNew = settings.maxTokens + if (enableThinking) settings.thinkingBudget else 0
-            Log.i(TAG, "generateOnce: prompt ${bundle.bytes.size} bytes, media=${bundle.mediaPaths.size}, maxNew=$maxNew")
+            val baseCache = withContext(Dispatchers.IO) {
+                baseCacheConfig(bundle.baseBytes, settings)
+            }
+            Log.i(
+                TAG,
+                "generateOnce: prompt ${bundle.bytes.size} bytes, base=${baseCache.prompt.size} bytes, " +
+                    "media=${bundle.mediaPaths.size}, maxNew=$maxNew",
+            )
             val generated = withContext(Dispatchers.IO) {
                 svc.generate(
                     bundle.bytes,
@@ -1585,6 +1599,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     settings.topK,
                     Random.nextInt(),
                     bundle.mediaPaths.toTypedArray(),
+                    baseCache.prompt,
+                    baseCache.fingerprint,
+                    baseCache.path,
                     callback,
                 )
             }
@@ -1676,7 +1693,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         else -> "Ошибка генерации (код $code)"
     }
 
-    private data class PromptBundle(val bytes: ByteArray, val mediaPaths: List<String>)
+    private data class PromptBundle(
+        val bytes: ByteArray,
+        /** System-only rendering: prefix of [bytes] used for the base cache. */
+        val baseBytes: ByteArray,
+        val mediaPaths: List<String>,
+    )
 
     private fun messageContent(message: ChatMessage, mediaPaths: MutableList<String>): String {
         val sb = StringBuilder()
@@ -1703,6 +1725,71 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             // the same ids as the native post-generation snapshot.
             message.text
         }
+
+    private data class BaseCacheConfig(
+        val prompt: ByteArray,
+        val fingerprint: ByteArray,
+        val path: String,
+    )
+
+    private fun baseCacheFile(model: File): File {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("${model.name}:${model.length()}".toByteArray(Charsets.UTF_8))
+        val key = digest.joinToString("") { "%02x".format(it) }.take(24)
+        return File(promptCacheDir, "base-$key.bin")
+    }
+
+    /** Keeps at most [BASE_CACHE_KEEP_FILES] base-cache files, newest first. */
+    private fun pruneBaseCaches(keep: File) {
+        promptCacheDir.listFiles { file ->
+            file.isFile && file.name.startsWith("base-") && file.name.endsWith(".bin.tmp") &&
+                System.currentTimeMillis() - file.lastModified() > 60 * 60 * 1000L
+        }?.forEach { runCatching { it.delete() } }
+        val files = promptCacheDir.listFiles { file ->
+            file.isFile && file.name.startsWith("base-") && file.name.endsWith(".bin")
+        } ?: return
+        files.asSequence()
+            .filter { it != keep }
+            .sortedByDescending { it.lastModified() }
+            .drop(BASE_CACHE_KEEP_FILES - 1)
+            .forEach { runCatching { it.delete() } }
+    }
+
+    /**
+     * Computes the persistent base-cache key. The native side also checks the
+     * effective KV layout (requested q8_0 may fall back to f16), so a cache
+     * recorded under one runtime configuration is never restored into another.
+     */
+    private fun baseCacheConfig(basePrompt: ByteArray, settings: Settings): BaseCacheConfig {
+        if (basePrompt.isEmpty()) return BaseCacheConfig(ByteArray(0), ByteArray(0), "")
+        val model = _state.value.modelName?.let { File(modelsDir, it) }?.takeIf { it.isFile }
+            ?: return BaseCacheConfig(ByteArray(0), ByteArray(0), "")
+        val cacheFile = baseCacheFile(model)
+        pruneBaseCaches(cacheFile)
+
+        val mmproj = mmprojFor(model)
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun field(value: String) {
+            digest.update(value.toByteArray(Charsets.UTF_8))
+            digest.update(0.toByte())
+        }
+        field(BASE_CACHE_FORMAT)
+        field(LLAMA_BUILD)
+        field(model.name)
+        field(model.length().toString())
+        field(model.lastModified().toString())
+        field(mmproj?.name ?: "-")
+        field(mmproj?.length()?.toString() ?: "-")
+        field(mmproj?.lastModified()?.toString() ?: "-")
+        field(settings.contextSize.toString())
+        field(settings.kvType.toString())
+        field(settings.flashAttn.toString())
+        field(settings.thinkingBudget.toString())
+        field(settings.toolsEnabled.toString())
+        field(settings.enabledTools.sorted().joinToString(","))
+        digest.update(basePrompt)
+        return BaseCacheConfig(basePrompt, digest.digest(), cacheFile.absolutePath)
+    }
 
     private suspend fun buildPrompt(
         service: ILlmService,
@@ -1762,8 +1849,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val templated = withContext(Dispatchers.IO) {
-            runCatching {
+        val (templated, baseTemplated) = withContext(Dispatchers.IO) {
+            val full = runCatching {
                 service.applyTemplate(
                     roles.toTypedArray(),
                     contents.toTypedArray(),
@@ -1771,8 +1858,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     enableThinking,
                 )
             }.getOrDefault(ByteArray(0))
+            // The base cache is only useful when the system block is rendered
+            // through the same template as the conversation. If the template
+            // cannot render the system message alone, leave the cache disabled.
+            val base = if (full.isNotEmpty() && system.isNotBlank()) {
+                runCatching {
+                    service.applyTemplate(
+                        arrayOf("system"),
+                        arrayOf(system),
+                        false,
+                        enableThinking,
+                    )
+                }.getOrDefault(ByteArray(0))
+            } else {
+                ByteArray(0)
+            }
+            full to base
         }
-        if (templated.isNotEmpty()) return PromptBundle(templated, mediaPaths)
+        if (templated.isNotEmpty()) return PromptBundle(templated, baseTemplated, mediaPaths)
 
         val sb = StringBuilder()
         if (system.isNotBlank()) sb.append("System: ").append(system).append("\n\n")
@@ -1793,7 +1896,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         sb.append("Assistant:")
-        return PromptBundle(sb.toString().toByteArray(Charsets.UTF_8), mediaPaths)
+        return PromptBundle(sb.toString().toByteArray(Charsets.UTF_8), ByteArray(0), mediaPaths)
     }
 
     override fun onCleared() {
