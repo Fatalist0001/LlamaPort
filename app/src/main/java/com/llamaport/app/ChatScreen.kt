@@ -558,7 +558,7 @@ private fun ChatInputBar(
                 )
                 Spacer(Modifier.width(8.dp))
                 if (state.generating) {
-                    SpeedChip(tokensPerSecond = live.speed)
+                    SpeedChip(live)
                     Spacer(Modifier.width(6.dp))
                 }
                 val generating = state.generating
@@ -617,7 +617,9 @@ private fun ChatInputBar(
 
 /** Live generation speed right next to the send/stop button. */
 @Composable
-private fun SpeedChip(tokensPerSecond: Float) {
+private fun SpeedChip(live: StreamingAnswer) {
+    // Read here, not in ChatInputBar: a speed tick must not recompose the bar.
+    val tokensPerSecond = live.speed
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = PillShape,

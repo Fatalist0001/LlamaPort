@@ -20,6 +20,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -562,6 +565,34 @@ private fun StreamingCursor() {
     )
 }
 
+/**
+ * Tool output can be up to 256 KB (`read_file`). One [Text] of that size took
+ * ~200 ms to lay out and record on this device, so the block renders the head
+ * of the text in a bounded, scrollable box instead of an item taller than the
+ * screen. The message keeps the full text: only the view is limited.
+ */
+private const val TOOL_TEXT_DISPLAY_LIMIT = 8_000
+
+private fun String.forToolDisplay(limit: Int = TOOL_TEXT_DISPLAY_LIMIT): String =
+    if (length <= limit) {
+        this
+    } else {
+        take(limit) + "\n… показано $limit из $length символов"
+    }
+
+@Composable
+private fun ToolText(text: String, maxHeight: Dp) {
+    val shown = remember(text) { text.forToolDisplay() }
+    Text(
+        shown,
+        style = MaterialTheme.typography.bodySmall,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+            .heightIn(max = maxHeight)
+            .verticalScroll(rememberScrollState()),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ToolCallBlock(message: ChatMessage) {
@@ -625,7 +656,7 @@ private fun ToolCallBlock(message: ChatMessage) {
             }
             if (!expanded && !message.toolArgs.isNullOrBlank()) {
                 Text(
-                    message.toolArgs,
+                    message.toolArgs.forToolDisplay(400),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -641,18 +672,13 @@ private fun ToolCallBlock(message: ChatMessage) {
                     if (!message.toolArgs.isNullOrBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text("Аргументы", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            message.toolArgs,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                        ToolText(message.toolArgs, maxHeight = 140.dp)
                     }
                     Spacer(Modifier.height(6.dp))
                     Text("Результат", style = MaterialTheme.typography.labelSmall)
-                    Text(
-                        message.toolResult ?: message.text,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
+                    ToolText(
+                        message.toolResult?.takeIf { it.isNotBlank() } ?: message.text,
+                        maxHeight = 300.dp,
                     )
                 }
             }

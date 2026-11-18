@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -162,6 +163,7 @@ data class UiState(
  * The ViewModel coalesces writes to the display frame, and text is committed
  * to [ChatMessage.text] once the answer is finished.
  */
+@Stable
 class StreamingAnswer {
     /** Id of the message being streamed, or 0 when nothing is streaming. */
     var messageId by mutableStateOf(0L)
@@ -177,6 +179,7 @@ class StreamingAnswer {
 
     private val builder = StringBuilder()
 
+    @Synchronized
     fun begin(id: Long) {
         builder.setLength(0)
         messageId = id
@@ -186,6 +189,7 @@ class StreamingAnswer {
     }
 
     /** Appends [chunk] only while [id] is still the live message. */
+    @Synchronized
     fun append(id: Long, chunk: String) {
         if (messageId != id || chunk.isEmpty()) return
         builder.append(chunk)
@@ -193,6 +197,7 @@ class StreamingAnswer {
         revision++
     }
 
+    @Synchronized
     fun setSpeed(id: Long, value: Float) {
         if (messageId != id || value <= 0f) return
         if (kotlin.math.abs(value - speed) < 0.05f) return
@@ -200,6 +205,7 @@ class StreamingAnswer {
     }
 
     /** Clears the live answer; with [id] it only clears that message. */
+    @Synchronized
     fun end(id: Long? = null) {
         if (id != null && messageId != id) return
         val idle = messageId == 0L && text.isEmpty() && speed == 0f
