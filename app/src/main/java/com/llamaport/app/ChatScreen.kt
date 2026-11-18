@@ -224,6 +224,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 if (state.modelLoaded || state.messages.isNotEmpty()) {
                     ChatInputBar(
                         state = state,
+                        live = viewModel.live,
                         onInput = viewModel::onInputChange,
                         onSend = viewModel::send,
                         onStop = viewModel::stop,
@@ -292,7 +293,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                         onSuggestion = viewModel::onInputChange,
                     )
                 } else {
-                    MessageList(state)
+                    MessageList(state, viewModel.live)
                 }
             }
         }
@@ -408,7 +409,7 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
         val left = when {
             progress != null && progress.phase == GenerationPhase.PROMPT ->
                 "Промпт ${progress.processed}/${progress.total}"
-            progress != null ->
+            state.generating ->
                 "Генерация…"
             else -> state.status
         }
@@ -416,7 +417,7 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
             text = left ?: "",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelSmall,
-            color = if (progress != null) {
+            color = if (progress != null || state.generating) {
                 MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -502,6 +503,7 @@ private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) 
 @Composable
 private fun ChatInputBar(
     state: UiState,
+    live: StreamingAnswer,
     onInput: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
@@ -556,7 +558,7 @@ private fun ChatInputBar(
                 )
                 Spacer(Modifier.width(8.dp))
                 if (state.generating) {
-                    SpeedChip(tokensPerSecond = state.progress?.tokensPerSecond ?: 0f)
+                    SpeedChip(tokensPerSecond = live.speed)
                     Spacer(Modifier.width(6.dp))
                 }
                 val generating = state.generating

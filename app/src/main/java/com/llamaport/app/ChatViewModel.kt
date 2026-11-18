@@ -7,9 +7,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.Uri
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CompletableDeferred
@@ -147,6 +153,65 @@ data class UiState(
     val showFreeMemory: Boolean = false,
 )
 
+/**
+ * Live answer of the running generation, kept outside [UiState] on purpose.
+ *
+ * With the text inside [UiState] every token replaced the whole message list
+ * and woke up every composable that observes the chat state (the scaffold, the
+ * bars, the drawer). Here a token only invalidates the bubble that renders it.
+ * The ViewModel coalesces writes to the display frame, and text is committed
+ * to [ChatMessage.text] once the answer is finished.
+ */
+class StreamingAnswer {
+    /** Id of the message being streamed, or 0 when nothing is streaming. */
+    var messageId by mutableStateOf(0L)
+        private set
+    var text by mutableStateOf("")
+        private set
+    /** Live tok/s shown under the answer and in the input bar. */
+    var speed by mutableStateOf(0f)
+        private set
+    /** Bumped on every visible change, so scroll effects can observe it. */
+    var revision by mutableStateOf(0)
+        private set
+
+    private val builder = StringBuilder()
+
+    fun begin(id: Long) {
+        builder.setLength(0)
+        messageId = id
+        text = ""
+        speed = 0f
+        revision++
+    }
+
+    /** Appends [chunk] only while [id] is still the live message. */
+    fun append(id: Long, chunk: String) {
+        if (messageId != id || chunk.isEmpty()) return
+        builder.append(chunk)
+        text = builder.toString()
+        revision++
+    }
+
+    fun setSpeed(id: Long, value: Float) {
+        if (messageId != id || value <= 0f) return
+        if (kotlin.math.abs(value - speed) < 0.05f) return
+        speed = value
+    }
+
+    /** Clears the live answer; with [id] it only clears that message. */
+    fun end(id: Long? = null) {
+        if (id != null && messageId != id) return
+        val idle = messageId == 0L && text.isEmpty() && speed == 0f
+        if (idle) return
+        messageId = 0L
+        builder.setLength(0)
+        text = ""
+        speed = 0f
+        revision++
+    }
+}
+
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
@@ -162,6 +227,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         const val BASE_CACHE_FORMAT = "llamaport-base-v1"
         const val LLAMA_BUILD = "b12129"
         const val BASE_CACHE_KEEP_FILES = 3
+        /** At most one live-text update per display frame at 120 Hz. */
+        const val LIVE_FLUSH_MS = 8L
+        /** Prompt progress is redrawn at most ten times per second. */
+        const val PROMPT_UI_MS = 100L
+        /** tok/s changes slowly: four updates per second is plenty. */
+        const val SPEED_UI_MS = 250L
         val HEAVY_PACKAGES = listOf(
             "com.android.chrome",
             "com.google.android.youtube",
@@ -177,6 +248,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** Text and speed of the answer being generated; see [StreamingAnswer]. */
+    val live = StreamingAnswer()
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val pendingTokens = StringBuilder()
+    private val pendingLock = Any()
+    private var pendingId = 0L
+    private var flushScheduled = false
+    private var lastFlushAt = 0L
+    private val flushTokensRunnable = Runnable { flushLiveTokens() }
 
     private val appContext = app.applicationContext
     private val modelsDir: File = File(app.filesDir, "models").apply { mkdirs() }
@@ -389,32 +471,40 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         dirty = true
     }
 
-    /** Fast path for live metrics: no session preview/title recomputation. */
-    private fun updateMessageMetrics(id: Long, transform: (MessageMetrics) -> MessageMetrics) {
-        _state.update { state ->
-            val messages = state.messages.map {
-                if (it.id == id) {
-                    it.copy(metrics = transform(it.metrics ?: MessageMetrics()))
-                } else {
-                    it
-                }
+    // ------------------------------------------------------- live streaming
+
+    /**
+     * Buffers a token for [StreamingAnswer] and schedules a single UI update
+     * per frame. Called from the inference callback thread, so the buffer is
+     * guarded; the state write itself happens on the main thread.
+     */
+    private fun queueLiveToken(id: Long, chunk: String) {
+        val delayMs: Long
+        synchronized(pendingLock) {
+            if (pendingId != id) {
+                pendingId = id
+                pendingTokens.setLength(0)
             }
-            state.activeSessionId?.let { sessionMessages[it] = messages }
-            state.copy(messages = messages)
+            pendingTokens.append(chunk)
+            if (flushScheduled) return
+            flushScheduled = true
+            delayMs = (lastFlushAt + LIVE_FLUSH_MS - SystemClock.uptimeMillis()).coerceAtLeast(0L)
         }
-        dirty = true
+        mainHandler.postDelayed(flushTokensRunnable, delayMs)
     }
 
-    /** Fast path for token streaming: no session preview/title recomputation per token. */
-    private fun appendToMessage(id: Long, chunk: String) {
-        _state.update { state ->
-            val messages = state.messages.map {
-                if (it.id == id) it.copy(text = it.text + chunk) else it
-            }
-            state.activeSessionId?.let { sessionMessages[it] = messages }
-            state.copy(messages = messages)
+    private fun flushLiveTokens() {
+        val id: Long
+        val chunk: String
+        synchronized(pendingLock) {
+            flushScheduled = false
+            lastFlushAt = SystemClock.uptimeMillis()
+            if (pendingTokens.isEmpty()) return
+            id = pendingId
+            chunk = pendingTokens.toString()
+            pendingTokens.setLength(0)
         }
-        dirty = true
+        live.append(id, chunk)
     }
 
     fun selectSession(id: String) {
@@ -637,6 +727,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleServiceLost(message: String, epoch: Int = serviceEpoch) {
         if (epoch != serviceEpoch || serviceLossHandled) return
         serviceLossHandled = true
+        // The live answer never reached the message: keep what was streamed
+        // before the process died.
+        val liveId = live.messageId
+        if (liveId != 0L) {
+            val partial = live.text
+            if (partial.isNotEmpty()) {
+                updateMessages { messages ->
+                    messages.map { if (it.id == liveId) it.copy(text = partial) else it }
+                }
+            }
+            live.end()
+        }
         val intentional = suppressServiceDeath
         suppressServiceDeath = false
         service = null
@@ -1378,6 +1480,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val assistant = ChatMessage(role = "assistant", text = "", streaming = true)
                 updateMessages { it + assistant }
+                live.begin(assistant.id)
 
                 val result = generateOnce(settings, history, assistant, toolsPrompt)
                 if (result.cancelled) break
@@ -1486,6 +1589,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         var genSpeed = 0f
         val startedAt = System.nanoTime()
         val finalized = AtomicBoolean(false)
+        var lastPromptUiAt = 0L
+        var lastSpeedUiAt = 0L
+        var generationStarted = false
 
         fun finish(generated: Int, error: String?) {
             if (!finalized.compareAndSet(false, true)) return
@@ -1511,56 +1617,52 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 if (seq != generationSeq) return
                 val text = String(chunk, Charsets.UTF_8)
                 if (text.isEmpty()) return
-                val streaming = _state.value.messages.any { it.id == assistant.id && it.streaming }
-                if (!streaming) return
+                // Only the live answer is updated per token; the message text is
+                // committed once when the answer is finished.
+                if (live.messageId != assistant.id) return
                 buffer.append(text)
-                appendToMessage(assistant.id, text)
+                queueLiveToken(assistant.id, text)
             }
 
             override fun onPromptProgress(processed: Int, total: Int, tokensPerSecond: Float) {
                 if (seq != generationSeq) return
                 promptSpeed = tokensPerSecond
                 promptTokens = total
-                _state.update {
-                    it.copy(
-                        progress = GenerationProgress(
-                            phase = GenerationPhase.PROMPT,
-                            processed = processed,
-                            total = total,
-                            tokensPerSecond = tokensPerSecond,
-                        ),
-                    )
+                val now = SystemClock.uptimeMillis()
+                if (now - lastPromptUiAt >= PROMPT_UI_MS || (total > 0 && processed >= total)) {
+                    lastPromptUiAt = now
+                    _state.update {
+                        it.copy(
+                            progress = GenerationProgress(
+                                phase = GenerationPhase.PROMPT,
+                                processed = processed,
+                                total = total,
+                                tokensPerSecond = tokensPerSecond,
+                            ),
+                        )
+                    }
                 }
                 // Under the answer: processing speed while the prompt is read,
                 // replaced by generation speed once tokens start arriving.
-                updateMessageMetrics(assistant.id) {
-                    it.copy(
-                        promptTokens = total,
-                        promptTokensPerSecond = tokensPerSecond,
-                    )
+                if (now - lastSpeedUiAt >= SPEED_UI_MS) {
+                    lastSpeedUiAt = now
+                    live.setSpeed(assistant.id, tokensPerSecond)
                 }
             }
 
             override fun onGenerationProgress(generated: Int, tokensPerSecond: Float) {
                 if (seq != generationSeq) return
                 genSpeed = tokensPerSecond
-                _state.update {
-                    it.copy(
-                        progress = GenerationProgress(
-                            phase = GenerationPhase.GENERATION,
-                            processed = generated,
-                            total = 0,
-                            tokensPerSecond = tokensPerSecond,
-                        ),
-                    )
+                if (!generationStarted) {
+                    // The prompt bar is done; generation itself needs no progress
+                    // state, only the live tok/s number.
+                    generationStarted = true
+                    _state.update { it.copy(progress = null) }
                 }
-                updateMessageMetrics(assistant.id) {
-                    it.copy(
-                        promptTokens = promptTokens,
-                        promptTokensPerSecond = promptSpeed,
-                        generatedTokens = generated,
-                        generationTokensPerSecond = tokensPerSecond,
-                    )
+                val now = SystemClock.uptimeMillis()
+                if (now - lastSpeedUiAt >= SPEED_UI_MS) {
+                    lastSpeedUiAt = now
+                    live.setSpeed(assistant.id, tokensPerSecond)
                 }
             }
 
@@ -1677,6 +1779,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // The final text is in the message now; the live overlay can go away.
+        live.end(assistantId)
         scheduleSave()
     }
 

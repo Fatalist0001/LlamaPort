@@ -84,6 +84,7 @@ import com.llamaport.app.Attachment
 import com.llamaport.app.ChatMessage
 import com.llamaport.app.MarkdownText
 import com.llamaport.app.MessageMetrics
+import com.llamaport.app.StreamingAnswer
 import com.llamaport.app.ThinkingParts
 import com.llamaport.app.UiState
 import com.llamaport.app.splitThinking
@@ -102,7 +103,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun MessageList(state: UiState) {
+internal fun MessageList(state: UiState, live: StreamingAnswer) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var autoFollow by remember { mutableStateOf(true) }
@@ -140,7 +141,6 @@ internal fun MessageList(state: UiState) {
 
     LaunchedEffect(
         state.messages.size,
-        state.messages.lastOrNull()?.text?.length,
         // When the live speed line appears, bring it into view as well.
         state.messages.lastOrNull()?.metrics != null,
     ) {
@@ -148,6 +148,19 @@ internal fun MessageList(state: UiState) {
             withFrameNanos { }
             jumpToBottom()
         }
+    }
+
+    // Follow the growing answer without reading the live text in composition:
+    // the observation lives in this coroutine, so a token does not recompose
+    // the whole list (and with it every message).
+    LaunchedEffect(live) {
+        snapshotFlow { live.revision }
+            .collect {
+                if (autoFollow && live.messageId != 0L) {
+                    withFrameNanos { }
+                    jumpToBottom()
+                }
+            }
     }
 
     LaunchedEffect(listState) {
@@ -169,7 +182,7 @@ internal fun MessageList(state: UiState) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(state.messages, key = { it.id }) { message ->
-                PopIn { MessageBubble(message) }
+                PopIn { MessageBubble(message, live) }
             }
         }
         if (!autoFollow) {
@@ -219,19 +232,22 @@ private fun PopIn(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, live: StreamingAnswer) {
     if (message.role == "tool") {
         ToolCallBlock(message)
         return
     }
     val isUser = message.role == "user"
-    val parts = remember(message.text, isUser) {
-        if (isUser) ThinkingParts(null, message.text) else splitThinking(message.text)
+    // Reading the live answer here (and not at the list level) keeps a token
+    // update inside this one item: the rest of the screen is not recomposed.
+    val text = if (live.messageId == message.id) live.text else message.text
+    val parts = remember(text, isUser) {
+        if (isUser) ThinkingParts(null, text) else splitThinking(text)
     }
     if (isUser) {
         UserBubble(message)
     } else {
-        AssistantMessage(message, parts)
+        AssistantMessage(message, parts, live)
     }
 }
 
@@ -286,7 +302,7 @@ private fun UserBubble(message: ChatMessage) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
+private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts, live: StreamingAnswer) {
     val clipboard = LocalClipboardManager.current
     var menuOpen by remember { mutableStateOf(false) }
     val reduced = LocalReducedMotion.current
@@ -371,7 +387,7 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
                     }
                 }
 
-                AnswerMetrics(message)
+                AnswerMetrics(message, live)
             }
             MessageActionsMenu(
                 expanded = menuOpen,
@@ -386,14 +402,11 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
 
 /** Live speed while the answer streams; a token-count button once it is done. */
 @Composable
-private fun AnswerMetrics(message: ChatMessage) {
+private fun AnswerMetrics(message: ChatMessage, live: StreamingAnswer) {
     if (message.streaming) {
-        val metrics = message.metrics ?: return
-        val speed = if (metrics.generatedTokens > 0) {
-            metrics.generationTokensPerSecond
-        } else {
-            metrics.promptTokensPerSecond
-        }
+        // The speed lives in the live answer, so it does not wake up the chat
+        // state; the final metrics are committed to the message when done.
+        val speed = if (live.messageId == message.id) live.speed else 0f
         if (speed > 0f) {
             Spacer(Modifier.height(4.dp))
             Text(
