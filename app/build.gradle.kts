@@ -20,12 +20,23 @@ android {
     }
 
     signingConfigs {
+        // Sign every build with the modern APK signature schemes. Some vendor
+        // installers misreport a debug/v2-only package as "not signed"; v3
+        // covers current devices and v2 covers everything down to Android 7.
+        getByName("debug").apply {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
         if (keystorePropsFile.exists()) {
             create("release") {
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

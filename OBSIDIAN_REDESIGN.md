@@ -113,3 +113,13 @@ commit. Functional flows are exercised on the connected device (RMO-NX1).
 - Reduced motion: two home screenshots two seconds apart differ only in the system battery area.
 - Light mode: home, models and settings rendered with the Daylight palette; dark restored afterwards.
 - Idle frame check after generation: 14 frames in six seconds (no persistent animation).
+
+### Build artifacts and signing
+
+All APKs are signed with the modern APK signature schemes (v2 + v3):
+
+- `LlamaPort-debug.apk` — debug build, standard Android debug certificate. Installs over an existing debug-signed install.
+- `LlamaPort-release-debugsigned.apk` — R8/minified release payload, signed with the debug certificate so it updates an existing debug install without wiping app data.
+- `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
+
+The project build now explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
