@@ -1,11 +1,16 @@
 package com.llamaport.app.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,24 +24,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -59,18 +55,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.llamaport.app.Settings
 import com.llamaport.app.UiState
-import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
+import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.components.Eyebrow
+import com.llamaport.app.ui.components.Hairline
+import com.llamaport.app.ui.components.ObsidianButton
+import com.llamaport.app.ui.components.ObsidianButtonStyle
+import com.llamaport.app.ui.components.ObsidianChip
+import com.llamaport.app.ui.components.ObsidianSlider
+import com.llamaport.app.ui.components.ObsidianSwitch
+import com.llamaport.app.ui.components.StateDot
 import com.llamaport.app.ui.motion.LocalReducedMotion
-import com.llamaport.app.ui.motion.disclosureEnter
-import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
+import com.llamaport.app.ui.motion.disclosureEnter
+import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.motion.pressable
+import com.llamaport.app.ui.theme.EyebrowStyle
+import com.llamaport.app.ui.theme.MonoBody
+import com.llamaport.app.ui.theme.MonoNumeric
+import com.llamaport.app.ui.theme.MonoSmall
+import com.llamaport.app.ui.theme.ObsidianTheme
+import com.llamaport.app.ui.theme.PanelShape
+import com.llamaport.app.ui.theme.PillShape
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
@@ -122,14 +135,14 @@ private val TOOL_OPTIONS = listOf(
 )
 
 /**
- * Settings surface: three animated disclosure sections.
+ * Settings surface: three technical Obsidian panels.
  *
- * 1. Поведение — system prompt, temperature presets, fine-tuning under «Подробнее».
- * 2. Память и скорость — context with a live KV-cache estimate, threads, batches, FA.
+ * 1. Поведение — prompt editor, temperature presets, exact sampling controls.
+ * 2. Память и скорость — context with a live KV estimate, threads, batches, FA.
  * 3. Продвинутое — mmap, KV type, tools, reload.
  *
- * Every number field is editable: the slider and the field share one value, the
- * displayed number animates, and discrete sliders tick with haptics on each step.
+ * Ranges, defaults and side effects are unchanged; only the presentation and
+ * the interaction feedback are new. Every number field remains editable.
  */
 @Composable
 internal fun SettingsSheet(
@@ -137,6 +150,7 @@ internal fun SettingsSheet(
     onUpdate: ((Settings) -> Settings) -> Unit,
     onReload: () -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     val settings = state.settings
     var behaviorExpanded by rememberSaveable { mutableStateOf(true) }
     var memoryExpanded by rememberSaveable { mutableStateOf(true) }
@@ -152,38 +166,50 @@ internal fun SettingsSheet(
     ) {
         Reveal(index = 0) {
             Column {
-                Text("Настройки", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(4.dp))
+                Eyebrow(text = "инференс", color = palette.textMuted)
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Настройки",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = palette.textPrimary,
+                )
+                Spacer(Modifier.height(5.dp))
                 Text(
                     "Температура и инструменты применяются сразу; контекст, потоки, " +
                         "пакеты и Flash Attention — после перезагрузки модели.",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.textSecondary,
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         Reveal(index = 1) {
             SettingsSection(
+                index = "01",
                 title = "Поведение",
                 subtitle = "Промпт, температура, лимиты",
                 expanded = behaviorExpanded,
                 onToggle = { behaviorExpanded = !behaviorExpanded },
             ) {
-                OutlinedTextField(
+                PromptEditor(
                     value = settings.systemPrompt,
                     onValueChange = { value -> onUpdate { it.copy(systemPrompt = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Системный промпт") },
-                    shape = MaterialTheme.shapes.medium,
-                    minLines = 2,
-                    maxLines = 6,
                 )
 
-                Spacer(Modifier.height(14.dp))
-                Text("Температура", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Температура",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textPrimary,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Точность или свобода генерации",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textMuted,
+                )
+                Spacer(Modifier.height(9.dp))
                 TemperaturePresets(
                     settings = settings,
                     onPreset = { preset ->
@@ -197,15 +223,15 @@ internal fun SettingsSheet(
                     },
                     onCustom = { detailsExpanded = true },
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     "«Точно» — короче и по делу, «Творчески» — свободнее и разнообразнее.",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.textMuted,
                 )
 
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(Modifier.height(12.dp))
+                Hairline()
                 DetailsToggle(
                     expanded = detailsExpanded,
                     onToggle = { detailsExpanded = !detailsExpanded },
@@ -215,97 +241,89 @@ internal fun SettingsSheet(
                     enter = disclosureEnter(),
                     exit = disclosureExit(),
                 ) {
-                    Column {
-                        Reveal(index = 0) {
-                            SettingsSlider(
-                                label = "Температура",
-                                value = settings.temperature,
-                                range = 0f..1.5f,
-                                display = { formatFloat(it, 2) },
-                                parse = { text -> text.toFloatOrNull()?.coerceIn(0f, 1.5f) },
-                                decimal = true,
-                                onValueChange = { value ->
-                                    onUpdate { it.copy(temperature = roundTo(value, 100)) }
-                                },
-                            )
-                        }
-                        Reveal(index = 1) {
-                            SettingsSlider(
-                                label = "Top-P",
-                                value = settings.topP,
-                                range = 0.05f..1f,
-                                display = { formatFloat(it, 2) },
-                                parse = { text -> text.toFloatOrNull()?.coerceIn(0.05f, 1f) },
-                                decimal = true,
-                                onValueChange = { value ->
-                                    onUpdate { it.copy(topP = roundTo(value, 100)) }
-                                },
-                            )
-                        }
-                        Reveal(index = 2) {
-                            SettingsSlider(
-                                label = "Top-K",
-                                value = settings.topK.toFloat(),
-                                range = 1f..128f,
-                                display = { it.roundToInt().toString() },
-                                parse = { text ->
-                                    text.toIntOrNull()?.coerceIn(1, 128)?.toFloat()
-                                },
-                                onValueChange = { value ->
-                                    onUpdate { it.copy(topK = value.roundToInt().coerceIn(1, 128)) }
-                                },
-                            )
-                        }
-                        Reveal(index = 3) {
-                            SettingsSlider(
-                                label = "Максимум новых токенов",
-                                value = settings.maxTokens.toFloat(),
-                                range = 64f..2048f,
-                                display = { it.roundToInt().toString() },
-                                parse = { text ->
-                                    text.toIntOrNull()?.coerceIn(64, 2048)?.toFloat()
-                                },
-                                onValueChange = { value ->
-                                    onUpdate { it.copy(maxTokens = snapTo(value, 64)) }
-                                },
-                                onExactCommit = { value ->
-                                    onUpdate {
-                                        it.copy(maxTokens = value.roundToInt().coerceIn(64, 2048))
-                                    }
-                                },
-                            )
-                        }
-                        Reveal(index = 4) {
-                            SettingsSlider(
-                                label = "Бюджет размышлений",
-                                description = "Добавляется к максимуму новых токенов; 0 — выключен.",
-                                value = THINKING_VALUES.indexOf(settings.thinkingBudget)
-                                    .coerceAtLeast(0)
-                                    .toFloat(),
-                                range = 0f..THINKING_VALUES.lastIndex.toFloat(),
-                                steps = (THINKING_VALUES.size - 2).coerceAtLeast(0),
-                                display = { index ->
-                                    val value = THINKING_VALUES[index.roundToInt().coerceIn(0, THINKING_VALUES.lastIndex)]
-                                    if (value == 0) "выкл" else value.toString()
-                                },
-                                parse = { text ->
-                                    val value = text.toIntOrNull()
-                                    when {
-                                        value == null -> null
-                                        value <= 0 -> 0f
-                                        else -> THINKING_VALUES.indexOfFirst { it >= value }
-                                            .coerceAtLeast(0)
-                                            .toFloat()
-                                    }
-                                },
-                                onValueChange = { index ->
-                                    val value = THINKING_VALUES[
-                                        index.roundToInt().coerceIn(0, THINKING_VALUES.lastIndex)
-                                    ]
-                                    onUpdate { it.copy(thinkingBudget = value) }
-                                },
-                            )
-                        }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SettingsSlider(
+                            label = "Температура",
+                            value = settings.temperature,
+                            range = 0f..1.5f,
+                            display = { formatFloat(it, 2) },
+                            parse = { text -> text.toFloatOrNull()?.coerceIn(0f, 1.5f) },
+                            decimal = true,
+                            onValueChange = { value ->
+                                onUpdate { it.copy(temperature = roundTo(value, 100)) }
+                            },
+                        )
+                        SettingsSlider(
+                            label = "Top-P",
+                            value = settings.topP,
+                            range = 0.05f..1f,
+                            display = { formatFloat(it, 2) },
+                            parse = { text -> text.toFloatOrNull()?.coerceIn(0.05f, 1f) },
+                            decimal = true,
+                            onValueChange = { value ->
+                                onUpdate { it.copy(topP = roundTo(value, 100)) }
+                            },
+                        )
+                        SettingsSlider(
+                            label = "Top-K",
+                            value = settings.topK.toFloat(),
+                            range = 1f..128f,
+                            display = { it.roundToInt().toString() },
+                            parse = { text ->
+                                text.toIntOrNull()?.coerceIn(1, 128)?.toFloat()
+                            },
+                            onValueChange = { value ->
+                                onUpdate { it.copy(topK = value.roundToInt().coerceIn(1, 128)) }
+                            },
+                        )
+                        SettingsSlider(
+                            label = "Максимум новых токенов",
+                            value = settings.maxTokens.toFloat(),
+                            range = 64f..2048f,
+                            display = { it.roundToInt().toString() },
+                            parse = { text ->
+                                text.toIntOrNull()?.coerceIn(64, 2048)?.toFloat()
+                            },
+                            onValueChange = { value ->
+                                onUpdate { it.copy(maxTokens = snapTo(value, 64)) }
+                            },
+                            onExactCommit = { value ->
+                                onUpdate {
+                                    it.copy(maxTokens = value.roundToInt().coerceIn(64, 2048))
+                                }
+                            },
+                        )
+                        SettingsSlider(
+                            label = "Бюджет размышлений",
+                            description = "Добавляется к максимуму новых токенов; 0 — выключен.",
+                            value = THINKING_VALUES.indexOf(settings.thinkingBudget)
+                                .coerceAtLeast(0)
+                                .toFloat(),
+                            range = 0f..THINKING_VALUES.lastIndex.toFloat(),
+                            steps = (THINKING_VALUES.size - 2).coerceAtLeast(0),
+                            display = { index ->
+                                val value = THINKING_VALUES[
+                                    index.roundToInt().coerceIn(0, THINKING_VALUES.lastIndex)
+                                ]
+                                if (value == 0) "выкл" else value.toString()
+                            },
+                            parse = { text ->
+                                val value = text.toIntOrNull()
+                                when {
+                                    value == null -> null
+                                    value <= 0 -> 0f
+                                    else -> THINKING_VALUES.indexOfFirst { it >= value }
+                                        .coerceAtLeast(0)
+                                        .toFloat()
+                                }
+                            },
+                            onValueChange = { index ->
+                                val value = THINKING_VALUES[
+                                    index.roundToInt().coerceIn(0, THINKING_VALUES.lastIndex)
+                                ]
+                                onUpdate { it.copy(thinkingBudget = value) }
+                            },
+                        )
                     }
                 }
             }
@@ -314,6 +332,7 @@ internal fun SettingsSheet(
         Spacer(Modifier.height(12.dp))
         Reveal(index = 2) {
             SettingsSection(
+                index = "02",
                 title = "Память и скорость",
                 subtitle = "Контекст, потоки, Flash Attention",
                 expanded = memoryExpanded,
@@ -338,40 +357,41 @@ internal fun SettingsSheet(
                 val exceedsModel = state.modelLoaded && state.modelCap > 0 &&
                     settings.contextSize > state.modelCap
                 if (exceedsModel || settings.contextSize > 8192) {
-                    Text(
-                        if (exceedsModel) {
+                    Spacer(Modifier.height(6.dp))
+                    Notice(
+                        text = if (exceedsModel) {
                             "Контекст больше заявленного моделью (${state.modelCap}): качество " +
                                 "может снизиться, а KV-кэш может не поместиться в RAM."
                         } else {
-                            "Большой контекст увеличивает KV-кэш. Если модель не поместится в RAM, " +
-                                "она может быть выгружена системой."
+                            "Большой контекст увеличивает KV-кэш. Если модель не поместится " +
+                                "в RAM, она может быть выгружена системой."
                         },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = palette.error,
                     )
                 }
                 val needMb = memoryNeedMb(state, settings.contextSize)
-                if (needMb > 0) {
+                Spacer(Modifier.height(7.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Eyebrow(text = "оценка памяти", color = palette.textMuted, tick = false)
+                    Spacer(Modifier.width(7.dp))
                     Text(
-                        "Оценка памяти: ~${formatRam(needMb)} · свободно " +
-                            "${formatRam(state.memAvailableMb)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (needMb > state.memAvailableMb) {
-                            MaterialTheme.colorScheme.error
+                        if (needMb > 0) {
+                            "~${formatRam(needMb)} · свободно ${formatRam(state.memAvailableMb)}"
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            "появится после выбора модели"
                         },
-                    )
-                } else {
-                    Text(
-                        "Реальный максимум контекста берётся из метаданных модели и появится " +
-                            "после её выбора.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MonoSmall,
+                        color = if (needMb > 0 && needMb > state.memAvailableMb) {
+                            palette.error
+                        } else {
+                            palette.textSecondary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 SettingsSlider(
                     label = "Потоки генерации",
                     value = settings.threads.toFloat(),
@@ -431,19 +451,23 @@ internal fun SettingsSheet(
                     },
                 )
 
-                Spacer(Modifier.height(8.dp))
-                Text("Flash Attention", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Flash Attention",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textPrimary,
+                )
                 Spacer(Modifier.height(8.dp))
                 FlashAttentionControl(
                     value = settings.flashAttn,
                     onChange = { index -> onUpdate { it.copy(flashAttn = index) } },
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(7.dp))
                 Text(
                     "«Авто» включает внимание с учётом типа KV-кэша; «Вкл» может ускорить " +
                         "генерацию, «Выкл» — запасной вариант.",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.textMuted,
                 )
             }
         }
@@ -451,6 +475,7 @@ internal fun SettingsSheet(
         Spacer(Modifier.height(12.dp))
         Reveal(index = 3) {
             SettingsSection(
+                index = "03",
                 title = "Продвинутое",
                 subtitle = "mmap, KV-кэш, инструменты",
                 expanded = advancedExpanded,
@@ -470,9 +495,9 @@ internal fun SettingsSheet(
                     onChange = { checked -> onUpdate { it.copy(kvType = if (checked) 1 else 0) } },
                 )
 
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
+                Hairline()
+                Spacer(Modifier.height(6.dp))
                 SwitchRow(
                     label = "Разрешить инструменты",
                     description = "Модель сможет вызывать калькулятор, файлы в песочнице и другие " +
@@ -486,6 +511,7 @@ internal fun SettingsSheet(
                     exit = disclosureExit(),
                 ) {
                     Column {
+                        Spacer(Modifier.height(4.dp))
                         for ((index, option) in TOOL_OPTIONS.withIndex()) {
                             Reveal(index = index) {
                                 ToolRow(
@@ -510,40 +536,44 @@ internal fun SettingsSheet(
                                 )
                             }
                         }
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             "Файлы доступны только в папке sandbox приложения. http_get и run_js " +
                                 "по умолчанию выключены.",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = palette.textMuted,
                         )
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Hairline()
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV применяются " +
                         "после перезагрузки модели.",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.textMuted,
                 )
-                Spacer(Modifier.height(8.dp))
-                Button(
+                Spacer(Modifier.height(10.dp))
+                ObsidianButton(
+                    text = "Перезагрузить модель",
                     onClick = onReload,
-                    modifier = Modifier.fillMaxWidth(),
+                    style = ObsidianButtonStyle.Secondary,
                     enabled = state.modelLoaded && !state.generating && !state.loadingModel,
-                ) {
-                    Text("Перезагрузить модель")
-                }
+                )
 
                 Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Spacer(Modifier.height(8.dp))
+                Hairline()
+                Spacer(Modifier.height(10.dp))
+                Eyebrow(text = "бэкенд", color = palette.textMuted, tick = false)
+                Spacer(Modifier.height(3.dp))
                 Text(
                     state.backendInfo.ifBlank { "llama.cpp" },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MonoSmall,
+                    color = palette.textMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -552,49 +582,79 @@ internal fun SettingsSheet(
 
 @Composable
 private fun SettingsSection(
+    index: String,
     title: String,
     subtitle: String,
     expanded: Boolean,
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = if (LocalReducedMotion.current) {
+        animationSpec = if (reduced) {
             snap()
         } else {
-            tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard)
+            tween(MotionTokens.Durations.SHORT, easing = MotionTokens.Easing.Standard)
         },
         label = "sectionChevron",
     )
 
-    Column(Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(PanelShape)
+            .background(palette.card)
+            .border(1.dp, palette.hairline, PanelShape),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .pressable(onClick = onToggle)
+                .padding(horizontal = 15.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
+            Box(
                 Modifier
-                    .fillMaxWidth()
-                    .pressable(onClick = onToggle)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .size(30.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(palette.nested)
+                    .border(1.dp, palette.hairline, MaterialTheme.shapes.extraSmall),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(index, style = MonoSmall, color = palette.silverDim)
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.textPrimary,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(palette.nested)
+                    .border(1.dp, palette.hairline, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     imageVector = AppIcons.Chevron,
                     contentDescription = if (expanded) "Свернуть" else "Открыть",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (expanded) palette.silver else palette.textSecondary,
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(17.dp)
                         .graphicsLayer { rotationZ = chevron },
                 )
             }
@@ -605,13 +665,79 @@ private fun SettingsSection(
             enter = disclosureEnter(),
             exit = disclosureExit(),
         ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 14.dp),
-                content = content,
+            Column {
+                Hairline()
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 15.dp, end = 15.dp, top = 15.dp, bottom = 16.dp),
+                    content = content,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromptEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val border by animateColorAsState(
+        targetValue = if (focused) palette.silver.copy(alpha = 0.48f) else palette.hairline,
+        animationSpec = if (reduced) snap() else tween(MotionTokens.Durations.MICRO),
+        label = "promptBorder",
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(palette.surface)
+            .border(1.dp, border, MaterialTheme.shapes.medium),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 13.dp, end = 13.dp, top = 11.dp, bottom = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Eyebrow(text = "системный промпт", color = palette.textMuted, tick = false)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${value.length} симв.",
+                style = MonoSmall,
+                color = palette.textMuted,
             )
         }
+        Hairline()
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.textPrimary),
+            minLines = 3,
+            maxLines = 6,
+            cursorBrush = SolidColor(palette.silver),
+            interactionSource = interaction,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 13.dp, vertical = 11.dp),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(
+                            "Опишите роль и стиль модели…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textMuted,
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
     }
 }
 
@@ -629,20 +755,20 @@ private fun TemperaturePresets(
     }
 
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         for (preset in TEMPERATURE_PRESETS) {
-            FilterChip(
+            ObsidianChip(
+                text = preset.label,
                 selected = preset == selected,
                 onClick = { onPreset(preset) },
-                label = { Text(preset.label) },
             )
         }
-        FilterChip(
+        ObsidianChip(
+            text = "Свой",
             selected = selected == null,
             onClick = onCustom,
-            label = { Text("Свой") },
         )
     }
 }
@@ -652,9 +778,11 @@ private fun DetailsToggle(
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = if (LocalReducedMotion.current) {
+        animationSpec = if (reduced) {
             snap()
         } else {
             tween(MotionTokens.Durations.MICRO, easing = MotionTokens.Easing.Standard)
@@ -665,43 +793,69 @@ private fun DetailsToggle(
         Modifier
             .fillMaxWidth()
             .pressable(onClick = onToggle)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            if (expanded) "Свернуть" else "Подробнее",
+            if (expanded) "Свернуть параметры" else "Точная настройка",
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
+            color = palette.silver,
             modifier = Modifier.weight(1f),
         )
         Icon(
             imageVector = AppIcons.Chevron,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = palette.silver,
             modifier = Modifier
-                .size(20.dp)
+                .size(18.dp)
                 .graphicsLayer { rotationZ = chevron },
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FlashAttentionControl(
     value: Int,
     onChange: (Int) -> Unit,
 ) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+    val palette = ObsidianTheme.palette
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(PillShape)
+            .background(palette.nested)
+            .border(1.dp, palette.hairline, PillShape)
+            .padding(3.dp),
+    ) {
         FLASH_ATTN_LABELS.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = value == index,
-                onClick = { onChange(index) },
-                shape = SegmentedButtonDefaults.itemShape(
-                    index = index,
-                    count = FLASH_ATTN_LABELS.size,
-                ),
+            val selected = value == index
+            val selectedBackground by animateColorAsState(
+                targetValue = if (selected) palette.silver else Color.Transparent,
+                animationSpec = tween(MotionTokens.Durations.MICRO),
+                label = "flashSegmentBackground",
+            )
+            val content = if (selected) {
+                if (palette.isDark) Color(0xFF111214) else Color(0xFFF7F7F9)
+            } else {
+                palette.textSecondary
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(PillShape)
+                    .background(selectedBackground)
+                    .pressable(
+                        hapticsEnabled = true,
+                    ) { onChange(index) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(label)
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = content,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                )
             }
         }
     }
@@ -726,6 +880,7 @@ private fun SettingsSlider(
     decimal: Boolean = false,
     onExactCommit: ((Float) -> Unit)? = null,
 ) {
+    val palette = ObsidianTheme.palette
     val haptics = LocalHapticFeedback.current
     val clamped = value.coerceIn(range.start, range.endInclusive)
     var lastStep by remember { mutableIntStateOf(stepIndex(clamped, range, steps)) }
@@ -737,12 +892,16 @@ private fun SettingsSlider(
                     .weight(1f)
                     .padding(end = 12.dp),
             ) {
-                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textPrimary,
+                )
                 if (description != null) {
                     Text(
                         description,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = palette.textMuted,
                     )
                 }
             }
@@ -754,7 +913,7 @@ private fun SettingsSlider(
                 onCommit = onExactCommit ?: onValueChange,
             )
         }
-        Slider(
+        ObsidianSlider(
             value = clamped,
             onValueChange = { next ->
                 if (steps > 0) {
@@ -782,6 +941,7 @@ private fun ContextSlider(
     description: String,
     onValueChange: (Int) -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     val minContext = 512
     val maxValue = CONTEXT_LIMIT
     val logSpan = ln(maxValue.toDouble() / minContext)
@@ -803,11 +963,17 @@ private fun ContextSlider(
                     .weight(1f)
                     .padding(end = 12.dp),
             ) {
-                Text("Контекст", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Контекст",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textPrimary,
+                )
                 Text(
                     description,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = palette.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             ExactNumberField(
@@ -818,7 +984,7 @@ private fun ContextSlider(
                 decimal = false,
             )
         }
-        Slider(
+        ObsidianSlider(
             value = positionOf(contextSize),
             onValueChange = { position ->
                 onValueChange(snapTo(contextAt(position).toFloat(), CONTEXT_STEP))
@@ -836,6 +1002,7 @@ private fun <T> ExactNumberField(
     onCommit: (T) -> Unit,
     decimal: Boolean,
 ) {
+    val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
     val animated by animateFloatAsState(
         targetValue = value,
@@ -849,17 +1016,22 @@ private fun <T> ExactNumberField(
     var focused by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
+    val border by animateColorAsState(
+        targetValue = if (focused) palette.silver.copy(alpha = 0.5f) else palette.hairline,
+        animationSpec = if (reduced) snap() else tween(MotionTokens.Durations.MICRO),
+        label = "exactNumberBorder",
+    )
 
     BasicTextField(
         value = if (focused) draft else display(animated),
         onValueChange = { draft = it },
         singleLine = true,
-        textStyle = MaterialTheme.typography.labelLarge.copy(
-            color = MaterialTheme.colorScheme.primary,
+        textStyle = MonoNumeric.copy(
+            color = palette.silver,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
         ),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        cursorBrush = SolidColor(palette.silver),
         keyboardOptions = KeyboardOptions(
             keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number,
             imeAction = ImeAction.Done,
@@ -877,7 +1049,8 @@ private fun <T> ExactNumberField(
                 }
             }
             .clip(MaterialTheme.shapes.extraSmall)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(palette.nested.copy(alpha = 0.72f))
+            .border(1.dp, border, MaterialTheme.shapes.extraSmall)
             .padding(horizontal = 10.dp, vertical = 7.dp),
     )
 }
@@ -889,11 +1062,12 @@ private fun SwitchRow(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     Row(
         Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
@@ -901,14 +1075,21 @@ private fun SwitchRow(
                 .weight(1f)
                 .padding(end = 12.dp),
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = palette.textPrimary,
+            )
             Text(
                 description,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.textMuted,
             )
         }
-        Switch(checked = checked, onCheckedChange = null)
+        ObsidianSwitch(
+            checked = checked,
+            onCheckedChange = onChange,
+        )
     }
 }
 
@@ -918,23 +1099,82 @@ private fun ToolRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
+    val haptics = LocalHapticFeedback.current
     Row(
         Modifier
             .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
-            .padding(vertical = 4.dp),
+            .toggleable(
+                value = checked,
+                role = Role.Checkbox,
+                onValueChange = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onCheckedChange(it)
+                },
+            )
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = checked, onCheckedChange = null)
-        Spacer(Modifier.width(8.dp))
+        val reduced = LocalReducedMotion.current
+        val fill by animateColorAsState(
+            targetValue = if (checked) palette.silver else Color.Transparent,
+            animationSpec = if (reduced) snap() else tween(MotionTokens.Durations.MICRO),
+            label = "toolCheckFill",
+        )
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(fill)
+                .border(
+                    1.dp,
+                    if (checked) palette.silver else palette.hairlineStrong,
+                    RoundedCornerShape(6.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (checked) {
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = null,
+                    tint = if (palette.isDark) Color(0xFF111214) else Color(0xFFF7F7F9),
+                    modifier = Modifier.size(13.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(option.label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                option.label,
+                style = MonoBody.copy(fontSize = 12.sp, color = palette.textPrimary),
+            )
             Text(
                 option.description,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.textMuted,
             )
         }
+    }
+}
+
+@Composable
+private fun Notice(text: String, color: Color) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraSmall)
+            .background(color.copy(alpha = 0.08f))
+            .border(1.dp, color.copy(alpha = 0.24f), MaterialTheme.shapes.extraSmall)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        StateDot(color = color, size = 5.dp)
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+        )
     }
 }
 
