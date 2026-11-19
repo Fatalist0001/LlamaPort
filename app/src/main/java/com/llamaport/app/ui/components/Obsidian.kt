@@ -5,18 +5,13 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -29,9 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,13 +41,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -64,7 +54,6 @@ import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.theme.EyebrowStyle
-import com.llamaport.app.ui.theme.MonoNumeric
 import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 
@@ -174,48 +163,6 @@ fun StateDot(
     }
 }
 
-/**
- * Base card surface with a hairline border. [active] lifts the card, adds a
- * silver rim and a very faint top sheen.
- */
-@Composable
-fun ObsidianCard(
-    modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.medium,
-    active: Boolean = false,
-    onClick: (() -> Unit)? = null,
-    enabled: Boolean = true,
-    contentPadding: PaddingValues = PaddingValues(14.dp),
-    background: Color? = null,
-    borderColor: Color? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val palette = ObsidianTheme.palette
-    val bg = background ?: if (active) palette.nested else palette.card
-    val border = borderColor ?: if (active) {
-        palette.silver.copy(alpha = 0.42f)
-    } else {
-        palette.hairline
-    }
-    val base = modifier
-        .fillMaxWidth()
-        .clip(shape)
-        .background(
-            if (active) {
-                Brush.verticalGradient(listOf(bg, palette.card))
-            } else {
-                Brush.verticalGradient(listOf(bg, bg))
-            },
-        )
-        .border(1.dp, border, shape)
-    val clickable = if (onClick != null) {
-        base.pressable(enabled = enabled, onClick = onClick)
-    } else {
-        base
-    }
-    Column(clickable.padding(contentPadding), content = content)
-}
-
 /** Circular / squircle icon button used in bars and card corners. */
 @Composable
 fun ObsidianIconButton(
@@ -277,7 +224,7 @@ fun ObsidianButton(
         ObsidianButtonStyle.Ghost -> Color.Transparent
     }
     val contentColor = when (style) {
-        ObsidianButtonStyle.Primary -> if (palette.isDark) Color(0xFF111214) else Color(0xFFF7F7F9)
+        ObsidianButtonStyle.Primary -> palette.onSilver
         ObsidianButtonStyle.Secondary -> palette.textPrimary
         ObsidianButtonStyle.Ghost -> palette.textSecondary
     }
@@ -381,7 +328,7 @@ fun ObsidianSwitch(
     )
     val thumb by animateColorAsState(
         targetValue = if (checked) {
-            if (palette.isDark) palette.background else Color(0xFFF7F7F9)
+            palette.onSilver
         } else {
             palette.textMuted
         },
@@ -518,117 +465,6 @@ private fun SliderThumb(accent: Color, core: Color) {
     }
 }
 
-/**
- * Text input for chat and editors. Focus is expressed by a silver rim and a
- * faint inner top highlight rather than a floating Material label.
- */
-@Composable
-fun ObsidianTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    placeholder: String = "",
-    enabled: Boolean = true,
-    singleLine: Boolean = false,
-    minLines: Int = 1,
-    maxLines: Int = 5,
-    textStyle: TextStyle = MaterialTheme.typography.bodyMedium,
-    shape: Shape = MaterialTheme.shapes.small,
-    leading: (@Composable RowScope.() -> Unit)? = null,
-    trailing: (@Composable RowScope.() -> Unit)? = null,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-) {
-    val palette = ObsidianTheme.palette
-    val reduced = LocalReducedMotion.current
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val border by animateColorAsState(
-        targetValue = when {
-            !enabled -> palette.hairline
-            focused -> palette.silver.copy(alpha = 0.55f)
-            else -> palette.hairlineStrong.copy(alpha = 0.65f)
-        },
-        animationSpec = if (reduced) snap() else tween(MotionTokens.Durations.MICRO),
-        label = "textFieldBorder",
-    )
-    val background = if (focused) palette.nested else palette.card
-    Row(
-        modifier = modifier
-            .clip(shape)
-            .background(background)
-            .border(1.dp, border, shape)
-            .padding(contentPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        leading?.invoke(this)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            singleLine = singleLine,
-            minLines = minLines,
-            maxLines = maxLines,
-            textStyle = textStyle.copy(color = palette.textPrimary),
-            cursorBrush = SolidColor(palette.silver),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            interactionSource = interaction,
-            modifier = Modifier.weight(1f),
-            decorationBox = { inner ->
-                Box {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            style = textStyle,
-                            color = palette.textMuted,
-                            maxLines = maxLines,
-                        )
-                    }
-                    inner()
-                }
-            },
-        )
-        trailing?.invoke(this)
-    }
-}
-
-/** Small monospace value, used for every changing technical number. */
-@Composable
-fun MonoValue(
-    text: String,
-    modifier: Modifier = Modifier,
-    color: Color = ObsidianTheme.palette.textSecondary,
-    style: TextStyle = MonoNumeric,
-) {
-    Text(text = text, style = style, color = color, modifier = modifier, maxLines = 1)
-}
-
-/** A tiny silver dot bullet. */
-@Composable
-fun SilverBullet(modifier: Modifier = Modifier, color: Color = ObsidianTheme.palette.silverDim) {
-    Box(modifier.size(4.dp).background(color, CircleShape))
-}
-
-/** Section container used by sheets and settings: large radius, hairline rim. */
-@Composable
-fun ObsidianSection(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val palette = ObsidianTheme.palette
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(palette.card)
-            .border(1.dp, palette.hairline, MaterialTheme.shapes.large)
-            .padding(16.dp),
-        content = content,
-    )
-}
-
 /** Faux outline chip used to label a single fact on a card. */
 @Composable
 fun ObsidianTag(
@@ -647,10 +483,3 @@ fun ObsidianTag(
         Text(text = text, style = EyebrowStyle, color = color, maxLines = 1)
     }
 }
-
-/** Convenience border for a rounded surface built outside [ObsidianCard]. */
-fun Modifier.obsidianBorder(
-    color: Color,
-    shape: Shape,
-    width: Dp = 1.dp,
-): Modifier = border(BorderStroke(width, color), shape)

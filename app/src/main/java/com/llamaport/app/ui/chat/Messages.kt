@@ -490,7 +490,7 @@ private fun AnswerMetrics(message: ChatMessage, live: StreamingAnswer) {
         if (speed > 0f) {
             Spacer(Modifier.height(7.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StateDot(color = palette.silver, size = 3.dp, pulse = true)
+                StateDot(color = palette.silver, size = 3.dp, pulse = false)
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = String.format(Locale.ROOT, "%.1f t/s", speed),

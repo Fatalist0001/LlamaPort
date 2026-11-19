@@ -76,3 +76,40 @@ Constraints discovered:
 
 Each stage ends with `:app:compileDebugKotlin`, an APK build, and a separate
 commit. Functional flows are exercised on the connected device (RMO-NX1).
+## Implemented
+
+| Stage | Commit | Result |
+|---|---|---|
+| 1. Design system | `e990c98` | Fixed Obsidian palette (no dynamic Material You), Obsidian Daylight light variant, precision type scale, mono value styles, 10/14/18/24/28 radii, `ObsidianBackground`, hairlines, buttons, chips, switch, slider, tags, progress line, silver pulse. |
+| 2. Home | `71c2ce3` | Custom top bar; technical model chip with state halo; `ObsidianCore` Canvas hero (three polished slabs, silver rim, reflection sweep, precision ticks, engraved robot seal, local completion flash, input reaction); compact quick-action cards; premium composer with focus rim, speed chip and send/stop morph; honest prompt progress. |
+| 3. Chat | `d6a6493` | Graphite user bubbles with hairline; free assistant layout with LlamaPort header; Markdown hierarchy, muted syntax highlighting, code surface with language header and copy button; thinking panel with live silver activity and collapse; tool panel; streaming shimmer and cursor; mono metrics and redesigned metrics dialog. |
+| 4. Models | `f1c4381` | Segmented animated RAM panel with legend readouts; technical GGUF cards (size, quant, parameters, vision/audio, mmproj, need, fit, active state); indeterminate load sequence with dimmed siblings and success pulse; load sheet stays open until the result; redesigned memory warning with need/available comparison. |
+| 5. Drawer + settings | `0d24359`, `2947e66` | Layered drawer, robot tile, staged content reveal, active chat silver rail, compact rename/delete, settings card; three Obsidian settings panels, prompt editor, custom sliders/switches/checks/segments, exact mono inputs, animated values, mono backend line. |
+| 6. Polish | final commit | Reduced-motion audit, concurrent-animation reduction during streaming, short-screen scrolling for the empty state, light theme pass, device screenshots, signed debug + release builds. |
+
+### Design decisions
+
+- **Single identity, two light levels.** The core palette is fixed Obsidian; system dark mode uses it directly. System light mode uses an airy “Obsidian Daylight” ink/silver variant. Code surfaces and the Core stay polished black in both modes.
+- **No second motion system.** All new effects use the existing `MotionTokens`, `Reveal`, `pressable`, `disclosureEnter/Exit` and `LocalReducedMotion`. `SilverPulseOverlay` and the progress/shimmer lines are additional primitives built on the same tokens.
+- **The Core is not a glowing orb.** It is a matte stacked-octagon object (Canvas paths and gradients only, no bitmap/3D dependency), lit by thin silver edge gradients. The pixel robot is the brand seal inside it.
+- **Honest metrics.** Prompt progress uses the real processed/total values. Model load has no native percentage, so the loading card and header show an indeterminate silver line, never a fake percent. Generation speed, token counts and RAM values still come from the existing state.
+- **Streaming cost.** The streaming answer remains outside `UiState`. New motion reads animation state in draw phase where possible. During generation only a small header dot, the answer shimmer line and the status shimmer line are continuous; the speed chip and status dots are static. The completion pulse is one-shot.
+- **Reduced Motion.** All infinite decorative motion (Core drift, robot ticker, pulses, shimmers, cursor) is disabled when `LocalReducedMotion` is true; short fades and layout changes remain.
+- **Small screens.** The home composition centers when it fits and becomes vertically scrollable when it does not.
+
+### Verification performed on the connected device
+
+- Kotlin compilation and debug APK build after every stage; release build at the end.
+- Model load/unload, mmproj auto-pairing (Omni + projector), active model state.
+- New chat, empty state, drawer navigation, session rename.
+- Session delete and snackbar undo path (delete verified; undo logic unchanged).
+- Streaming generation, real tok/s metrics, stop generation.
+- Markdown headings/lists/inline formatting; fenced Kotlin code; copy button with “ГОТОВО”.
+- Thinking block expand/collapse and live state.
+- Tool block collapsed/expanded with bounded 8 000-character output.
+- Image attachment rendering.
+- Settings: exact number commit, threads slider drag, flash-attention segment, tools disclosure, switches.
+- Memory warning (need 4.9 GB / free 2.2 GB) and cancel path.
+- Reduced motion: two home screenshots two seconds apart differ only in the system battery area.
+- Light mode: home, models and settings rendered with the Daylight palette; dark restored afterwards.
+- Idle frame check after generation: 14 frames in six seconds (no persistent animation).

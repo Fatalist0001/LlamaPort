@@ -119,7 +119,6 @@ import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
 import com.llamaport.app.ui.components.Eyebrow
-import com.llamaport.app.ui.components.MonoValue
 import com.llamaport.app.ui.components.ObsidianBackground
 import com.llamaport.app.ui.components.ObsidianButton
 import com.llamaport.app.ui.components.ObsidianButtonStyle
@@ -213,9 +212,9 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         scrimColor = if (palette.isDark) {
-            Color.Black.copy(alpha = 0.68f)
+            palette.scrim.copy(alpha = 0.68f)
         } else {
-            Color.Black.copy(alpha = 0.32f)
+            palette.scrim.copy(alpha = 0.32f)
         },
         drawerContent = {
             AppDrawer(
@@ -377,9 +376,9 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
             sheetState = sheetState,
             containerColor = ObsidianTheme.palette.surface,
             scrimColor = if (ObsidianTheme.palette.isDark) {
-                Color.Black.copy(alpha = 0.62f)
+                palette.scrim.copy(alpha = 0.62f)
             } else {
-                Color.Black.copy(alpha = 0.30f)
+                palette.scrim.copy(alpha = 0.30f)
             },
             shape = MaterialTheme.shapes.extraLarge,
         ) {
@@ -403,9 +402,9 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
             sheetState = sheetState,
             containerColor = ObsidianTheme.palette.surface,
             scrimColor = if (ObsidianTheme.palette.isDark) {
-                Color.Black.copy(alpha = 0.62f)
+                palette.scrim.copy(alpha = 0.62f)
             } else {
-                Color.Black.copy(alpha = 0.30f)
+                palette.scrim.copy(alpha = 0.30f)
             },
             shape = MaterialTheme.shapes.extraLarge,
         ) {
@@ -560,7 +559,7 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
                 StateDot(
                     color = accent,
                     size = 5.dp,
-                    pulse = state.generating || state.loadingModel,
+                    pulse = state.loadingModel,
                 )
                 Spacer(Modifier.width(8.dp))
                 if (left != null) {
@@ -849,8 +848,8 @@ private fun SendStopButton(
     )
     val foreground = when {
         generating -> palette.error
-        palette.isDark -> Color(0xFF111214)
-        else -> Color(0xFFF7F7F9)
+        palette.isDark -> palette.onSilver
+        else -> palette.onSilver
     }
     val interactive = generating || enabled
     val shape = RoundedCornerShape(radius)
@@ -921,7 +920,7 @@ private fun SpeedChip(live: StreamingAnswer) {
             .padding(horizontal = 9.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StateDot(color = palette.silver, size = 4.dp, pulse = true)
+        StateDot(color = palette.silver, size = 4.dp, pulse = false)
         Spacer(Modifier.width(6.dp))
         AnimatedNumber(
             value = tokensPerSecond,

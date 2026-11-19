@@ -835,7 +835,7 @@ private fun FlashAttentionControl(
                 label = "flashSegmentBackground",
             )
             val content = if (selected) {
-                if (palette.isDark) Color(0xFF111214) else Color(0xFFF7F7F9)
+                palette.onSilver
             } else {
                 palette.textSecondary
             }
@@ -1137,7 +1137,7 @@ private fun ToolRow(
                 Icon(
                     imageVector = AppIcons.Check,
                     contentDescription = null,
-                    tint = if (palette.isDark) Color(0xFF111214) else Color(0xFFF7F7F9),
+                    tint = palette.onSilver,
                     modifier = Modifier.size(13.dp),
                 )
             }

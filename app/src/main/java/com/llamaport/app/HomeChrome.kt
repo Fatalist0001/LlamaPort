@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -129,7 +131,7 @@ internal fun ModelChip(
         state.modelLoaded -> "готова"
         else -> "не выбрана"
     }
-    val pulse = state.loadingModel || state.generating || state.serviceDead
+    val pulse = state.loadingModel || state.serviceDead
 
     Row(
         modifier = modifier
@@ -711,124 +713,134 @@ internal fun HomeEmptyState(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxHeight < 640.dp
+        val viewportHeight = maxHeight
+        val compact = viewportHeight < 640.dp
         val coreSize = if (compact) 206.dp else 268.dp
-        Column(
-            modifier = Modifier
+        // The composition centers when it fits and scrolls on short screens,
+        // so the picker and prompt cards are never clipped.
+        Box(
+            Modifier
                 .fillMaxSize()
-                .padding(
-                    horizontal = 24.dp,
-                    vertical = if (compact) 10.dp else 20.dp,
-                )
-                .graphicsLayer {
-                    translationX = if (shake.value in 0.001f..0.999f) {
-                        sin(shake.value * 4f * PI).toFloat() * 10.dp.toPx() * (1f - shake.value)
-                    } else {
-                        0f
-                    }
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .verticalScroll(rememberScrollState()),
         ) {
-            Reveal(index = 0) {
-                ObsidianCore(
-                    state = robotStateFor(state),
-                    size = coreSize,
-                    loadingProgress = loadingProgress,
-                    inputActive = state.input.isNotEmpty(),
-                    completionTick = completionTick,
-                    active = true,
-                    onLongPress = { showRobotDemo = true },
-                )
-            }
-            Spacer(Modifier.height(if (compact) 10.dp else 16.dp))
-            Reveal(index = 1) {
-                Text(
-                    "LlamaPort",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                palette.textPrimary,
-                                palette.silver,
-                                palette.silverDim,
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = viewportHeight)
+                    .padding(
+                        horizontal = 24.dp,
+                        vertical = if (compact) 10.dp else 20.dp,
+                    )
+                    .graphicsLayer {
+                        translationX = if (shake.value in 0.001f..0.999f) {
+                            sin(shake.value * 4f * PI).toFloat() * 10.dp.toPx() * (1f - shake.value)
+                        } else {
+                            0f
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Reveal(index = 0) {
+                    ObsidianCore(
+                        state = robotStateFor(state),
+                        size = coreSize,
+                        loadingProgress = loadingProgress,
+                        inputActive = state.input.isNotEmpty(),
+                        completionTick = completionTick,
+                        active = true,
+                        onLongPress = { showRobotDemo = true },
+                    )
+                }
+                Spacer(Modifier.height(if (compact) 10.dp else 16.dp))
+                Reveal(index = 1) {
+                    Text(
+                        "LlamaPort",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    palette.textPrimary,
+                                    palette.silver,
+                                    palette.silverDim,
+                                ),
                             ),
                         ),
-                    ),
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Reveal(index = 2) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StateDot(
-                        color = statusColor,
-                        size = 5.dp,
-                        pulse = state.loadingModel || state.generating,
-                    )
-                    Spacer(Modifier.width(7.dp))
-                    Eyebrow(
-                        text = when {
-                            state.loadingModel -> "загрузка модели"
-                            state.serviceDead -> "инференс остановлен"
-                            state.modelLoaded -> "локальный интеллект · готов"
-                            else -> "локальный интеллект · llama.cpp"
-                        },
-                        color = palette.textMuted,
-                        tick = false,
                     )
                 }
-            }
-            Spacer(Modifier.height(10.dp))
-            Reveal(index = 3) {
-                Text(
-                    text = when {
-                        state.loadingModel -> "Загружаю модель…"
-                        state.serviceDead -> "Процесс инференса остановлен"
-                        !state.modelLoaded ->
-                            "Модель работает прямо на телефоне, без интернета. " +
-                                "Выберите GGUF-файл, чтобы начать."
-                        else -> "Модель готова. С чего начнём?"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.textSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.widthIn(max = 340.dp),
-                )
-            }
-
-            if (!state.modelLoaded) {
-                Spacer(Modifier.height(if (compact) 16.dp else 24.dp))
-                Reveal(index = 4) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        ObsidianButton(
-                            text = "Выбрать модель",
-                            onClick = onChooseModel,
-                            leadingIcon = AppIcons.Document,
-                            modifier = Modifier.widthIn(max = 300.dp),
+                Spacer(Modifier.height(6.dp))
+                Reveal(index = 2) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StateDot(
+                            color = statusColor,
+                            size = 5.dp,
+                            pulse = state.loadingModel,
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = "GGUF · ЛОКАЛЬНО · БЕЗ СЕТИ",
-                            style = EyebrowStyle,
+                        Spacer(Modifier.width(7.dp))
+                        Eyebrow(
+                            text = when {
+                                state.loadingModel -> "загрузка модели"
+                                state.serviceDead -> "инференс остановлен"
+                                state.modelLoaded -> "локальный интеллект · готов"
+                                else -> "локальный интеллект · llama.cpp"
+                            },
                             color = palette.textMuted,
+                            tick = false,
                         )
                     }
                 }
-            } else {
-                Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
-                Reveal(index = 4) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QUICK_ACTIONS.chunked(2).forEach { rowActions ->
-                            Row(
-                                Modifier.fillMaxWidth().widthIn(max = 430.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                for (action in rowActions) {
-                                    QuickActionCard(
-                                        action = action,
-                                        onClick = { onSuggestion(action.label) },
-                                        modifier = Modifier.weight(1f),
-                                        compact = compact,
-                                    )
+                Spacer(Modifier.height(10.dp))
+                Reveal(index = 3) {
+                    Text(
+                        text = when {
+                            state.loadingModel -> "Загружаю модель…"
+                            state.serviceDead -> "Процесс инференса остановлен"
+                            !state.modelLoaded ->
+                                "Модель работает прямо на телефоне, без интернета. " +
+                                    "Выберите GGUF-файл, чтобы начать."
+                            else -> "Модель готова. С чего начнём?"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 340.dp),
+                    )
+                }
+
+                if (!state.modelLoaded) {
+                    Spacer(Modifier.height(if (compact) 16.dp else 24.dp))
+                    Reveal(index = 4) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            ObsidianButton(
+                                text = "Выбрать модель",
+                                onClick = onChooseModel,
+                                leadingIcon = AppIcons.Document,
+                                modifier = Modifier.widthIn(max = 300.dp),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "GGUF · ЛОКАЛЬНО · БЕЗ СЕТИ",
+                                style = EyebrowStyle,
+                                color = palette.textMuted,
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
+                    Reveal(index = 4) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            QUICK_ACTIONS.chunked(2).forEach { rowActions ->
+                                Row(
+                                    Modifier.fillMaxWidth().widthIn(max = 430.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    for (action in rowActions) {
+                                        QuickActionCard(
+                                            action = action,
+                                            onClick = { onSuggestion(action.label) },
+                                            modifier = Modifier.weight(1f),
+                                            compact = compact,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -836,7 +848,6 @@ internal fun HomeEmptyState(
                 }
             }
         }
-
     }
 }
 
