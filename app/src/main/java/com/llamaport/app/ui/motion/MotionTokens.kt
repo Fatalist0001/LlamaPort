@@ -12,29 +12,44 @@ object MotionTokens {
 
     /** Durations in milliseconds. */
     object Durations {
-        /** Very short state changes: switches, chips, icon color swaps. */
-        const val MICRO = 150
+        /** Very short state changes: switches, chips, icon colour swaps. */
+        const val MICRO = 160
 
         /** Short state changes that also move something (size, position). */
-        const val SHORT = 250
+        const val SHORT = 240
 
         /** Enter/exit of cards, list items, sheet content blocks. */
-        const val ENTER = 300
+        const val ENTER = 320
+
+        /** Disclosure panels and section expansion. */
+        const val PANEL = 380
 
         /** Screen-level and container transitions. */
         const val TRANSITION = 400
+
+        /** Drawer slide, complex multi-property transitions. */
+        const val COMPLEX = 480
+
+        /** Time for the bag of a silver pulse to fade out. */
+        const val PULSE = 900
 
         /** The only animation kept when the user disabled system animations:
          *  a quick fade so state changes remain readable. */
         const val FADE_REDUCED = 120
     }
 
-    /** Material 3 emphasized easing family. */
+    /** Material 3 emphasized easing family plus a precise mechanical curve. */
     object Easing {
         val Standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         val Emphasized = CubicBezierEasing(0.2f, 0f, 0f, 1f)
         val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
         val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+
+        /** A short mechanical settle: fast entry, controlled stop. */
+        val Precision = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+
+        /** Used for sweeping reflections and progress lines. */
+        val Line = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
     }
 
     /** Spring configs. Springs are used where motion should feel physical. */
@@ -55,6 +70,18 @@ object MotionTokens {
         val Gentle = spring<Float>(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessVeryLow,
+        )
+
+        /** Smooth size/layout changes without overshoot (sheets, cards). */
+        val Smooth = spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        )
+
+        /** Drawer and panel settle with a barely visible overshoot. */
+        val Panel = spring<Float>(
+            dampingRatio = 0.86f,
+            stiffness = 320f,
         )
     }
 

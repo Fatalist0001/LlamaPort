@@ -1,115 +1,126 @@
 package com.llamaport.app.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
 /*
- * Fallback brand palette: indigo primary, slate secondary, teal tertiary.
- * On Android 12+ Material You replaces it with colors derived from the
- * wallpaper, so the app keeps following the system accent.
+ * Obsidian is a fixed brand identity, not a wallpaper-derived Material You
+ * theme. On Android 12+ the old build followed the system accent, which could
+ * turn every silver surface purple or blue; that is intentionally gone.
  */
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF4A5CC7),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDEE0FF),
-    onPrimaryContainer = Color(0xFF00105C),
-    inversePrimary = Color(0xFFBAC3FF),
-    secondary = Color(0xFF5B5D72),
+
+private val ObsidianDarkScheme = darkColorScheme(
+    primary = ObsidianSilver,
+    onPrimary = Color(0xFF111214),
+    primaryContainer = ObsidianNested,
+    onPrimaryContainer = ObsidianText,
+    inversePrimary = Color(0xFF5B606A),
+    secondary = Color(0xFFB7BAC3),
+    onSecondary = Color(0xFF111214),
+    secondaryContainer = ObsidianNested,
+    onSecondaryContainer = ObsidianText,
+    tertiary = ObsidianSuccess,
+    onTertiary = Color(0xFF0D1712),
+    tertiaryContainer = Color(0xFF21352A),
+    onTertiaryContainer = Color(0xFFCBE6D6),
+    error = ObsidianError,
+    onError = Color(0xFF221012),
+    errorContainer = Color(0xFF3A2024),
+    onErrorContainer = Color(0xFFF2CED1),
+    background = ObsidianBlack,
+    onBackground = ObsidianText,
+    surface = ObsidianBlack,
+    onSurface = ObsidianText,
+    surfaceVariant = ObsidianNested,
+    onSurfaceVariant = ObsidianTextSecondary,
+    surfaceTint = ObsidianSilver,
+    inverseSurface = ObsidianText,
+    inverseOnSurface = ObsidianBlack,
+    outline = ObsidianHairlineStrong,
+    outlineVariant = ObsidianHairline,
+    scrim = Color(0xFF000000),
+    surfaceBright = ObsidianElevated,
+    surfaceDim = ObsidianBlack,
+    surfaceContainerLowest = ObsidianBlack,
+    surfaceContainerLow = ObsidianSurface,
+    surfaceContainer = ObsidianCard,
+    surfaceContainerHigh = ObsidianNested,
+    surfaceContainerHighest = ObsidianElevated,
+)
+
+private val ObsidianLightScheme = lightColorScheme(
+    primary = DaylightSilver,
+    onPrimary = Color(0xFFF7F7F9),
+    primaryContainer = DaylightNested,
+    onPrimaryContainer = DaylightText,
+    inversePrimary = Color(0xFFBFC3CB),
+    secondary = Color(0xFF6B6F78),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE0E1F9),
-    onSecondaryContainer = Color(0xFF181A2C),
-    tertiary = Color(0xFF006A6A),
+    secondaryContainer = DaylightNested,
+    onSecondaryContainer = DaylightText,
+    tertiary = DaylightSuccess,
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFF9CF1F0),
-    onTertiaryContainer = Color(0xFF002020),
-    error = Color(0xFFBA1A1A),
+    tertiaryContainer = Color(0xFFD8EADF),
+    onTertiaryContainer = Color(0xFF153425),
+    error = DaylightError,
     onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFFBF8FF),
-    onBackground = Color(0xFF1B1B21),
-    surface = Color(0xFFFBF8FF),
-    onSurface = Color(0xFF1B1B21),
-    surfaceVariant = Color(0xFFE4E1EC),
-    onSurfaceVariant = Color(0xFF46464F),
-    surfaceTint = Color(0xFF4A5CC7),
-    inverseSurface = Color(0xFF303038),
-    inverseOnSurface = Color(0xFFF2EFF7),
-    outline = Color(0xFF767680),
-    outlineVariant = Color(0xFFC6C5D0),
+    errorContainer = Color(0xFFF6DDE0),
+    onErrorContainer = Color(0xFF401115),
+    background = DaylightBackground,
+    onBackground = DaylightText,
+    surface = DaylightBackground,
+    onSurface = DaylightText,
+    surfaceVariant = DaylightNested,
+    onSurfaceVariant = DaylightTextSecondary,
+    surfaceTint = DaylightSilver,
+    inverseSurface = DaylightText,
+    inverseOnSurface = DaylightBackground,
+    outline = DaylightHairlineStrong,
+    outlineVariant = DaylightHairline,
     scrim = Color(0xFF000000),
-    surfaceBright = Color(0xFFFBF8FF),
-    surfaceDim = Color(0xFFDBD9E0),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF5F2FA),
-    surfaceContainer = Color(0xFFEFEDF4),
-    surfaceContainerHigh = Color(0xFFE9E7EF),
-    surfaceContainerHighest = Color(0xFFE4E1E9),
+    surfaceBright = DaylightCard,
+    surfaceDim = DaylightBackground,
+    surfaceContainerLowest = DaylightCard,
+    surfaceContainerLow = DaylightSurface,
+    surfaceContainer = DaylightCard,
+    surfaceContainerHigh = DaylightNested,
+    surfaceContainerHighest = DaylightElevated,
 )
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFBAC3FF),
-    onPrimary = Color(0xFF08218A),
-    primaryContainer = Color(0xFF2E3FA6),
-    onPrimaryContainer = Color(0xFFDEE0FF),
-    inversePrimary = Color(0xFF4A5CC7),
-    secondary = Color(0xFFC4C5DD),
-    onSecondary = Color(0xFF2D2F42),
-    secondaryContainer = Color(0xFF434559),
-    onSecondaryContainer = Color(0xFFE0E1F9),
-    tertiary = Color(0xFF80D5D4),
-    onTertiary = Color(0xFF003737),
-    tertiaryContainer = Color(0xFF004F4F),
-    onTertiaryContainer = Color(0xFF9CF1F0),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF131318),
-    onBackground = Color(0xFFE4E1E9),
-    surface = Color(0xFF131318),
-    onSurface = Color(0xFFE4E1E9),
-    surfaceVariant = Color(0xFF46464F),
-    onSurfaceVariant = Color(0xFFC7C5D0),
-    surfaceTint = Color(0xFFBAC3FF),
-    inverseSurface = Color(0xFFE4E1E9),
-    inverseOnSurface = Color(0xFF303038),
-    outline = Color(0xFF90909A),
-    outlineVariant = Color(0xFF46464F),
-    scrim = Color(0xFF000000),
-    surfaceBright = Color(0xFF39383F),
-    surfaceDim = Color(0xFF131318),
-    surfaceContainerLowest = Color(0xFF0D0D12),
-    surfaceContainerLow = Color(0xFF1B1B21),
-    surfaceContainer = Color(0xFF1F1F25),
-    surfaceContainerHigh = Color(0xFF292930),
-    surfaceContainerHighest = Color(0xFF34343B),
-)
+/** Brand colours outside of the Material 3 slots. */
+val LocalObsidianPalette = staticCompositionLocalOf { ObsidianDarkPalette }
 
+/** Short accessor: `ObsidianTheme.palette.silver`. */
+object ObsidianTheme {
+    val palette: ObsidianPalette
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalObsidianPalette.current
+}
+
+/**
+ * The app always uses the Obsidian scale; the system light setting selects the
+ * daylight ink variant while code surfaces and the Core stay polished black.
+ */
 @Composable
 fun LlamaPortTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        darkTheme -> DarkColors
-        else -> LightColors
+    val palette = if (darkTheme) ObsidianDarkPalette else ObsidianLightPalette
+    CompositionLocalProvider(LocalObsidianPalette provides palette) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) ObsidianDarkScheme else ObsidianLightScheme,
+            typography = LlamaTypography,
+            shapes = LlamaShapes,
+            content = content,
+        )
     }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        shapes = LlamaShapes,
-        content = content,
-    )
 }

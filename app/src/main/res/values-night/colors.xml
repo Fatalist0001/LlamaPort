@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Matches the dark fallback surface; only visible behind the edge-to-edge content. -->
-    <color name="llamaport_window_background">#131318</color>
+    <!-- Obsidian: matches the Compose background so the first frame is seamless. -->
+    <color name="llamaport_window_background">#08090B</color>
 </resources>

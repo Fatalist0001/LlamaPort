@@ -1,5 +1,6 @@
 package com.llamaport.app.ui.motion
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -33,6 +34,38 @@ fun AnimatedNumber(
             )
         },
         label = "animatedNumberInt",
+    )
+    Text(
+        text = format(animated),
+        style = style,
+        modifier = modifier,
+    )
+}
+
+/**
+ * Decimal variant for values such as tok/s, gigabytes and KV-cache sizes.
+ * Reads the animation in the text layer only, so a changing value does not
+ * recompose the surrounding card.
+ */
+@Composable
+fun AnimatedNumber(
+    value: Float,
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    format: (Float) -> String = { it.toString() },
+) {
+    val reduced = LocalReducedMotion.current
+    val animated by animateFloatAsState(
+        targetValue = value,
+        animationSpec = if (reduced) {
+            snap()
+        } else {
+            tween(
+                durationMillis = MotionTokens.Durations.SHORT,
+                easing = MotionTokens.Easing.Emphasized,
+            )
+        },
+        label = "animatedNumberFloat",
     )
     Text(
         text = format(animated),
