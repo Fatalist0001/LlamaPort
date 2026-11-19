@@ -116,8 +116,11 @@ import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
+import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.MonoValue
 import com.llamaport.app.ui.components.ObsidianBackground
+import com.llamaport.app.ui.components.ObsidianButton
+import com.llamaport.app.ui.components.ObsidianButtonStyle
 import com.llamaport.app.ui.components.ObsidianIconButton
 import com.llamaport.app.ui.components.ObsidianProgressLine
 import com.llamaport.app.ui.components.SilverPulseOverlay
@@ -128,10 +131,12 @@ import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.settings.SettingsSheet
+import com.llamaport.app.ui.theme.EyebrowStyle
 import com.llamaport.app.ui.theme.MonoNumeric
 import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -145,6 +150,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     var showSettings by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
+    var sheetLoadName by remember { mutableStateOf<String?>(null) }
     var emptyShakeTick by remember { mutableIntStateOf(0) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -163,6 +169,28 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         state.error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+
+    // Keep the model sheet visible during loading so the selection, the dimmed
+    // siblings and the progress line are actually seen. Close it one short
+    // pulse after a successful load.
+    LaunchedEffect(showModels, state.loadingModel, state.modelLoaded, state.modelName) {
+        if (!showModels) {
+            sheetLoadName = null
+            return@LaunchedEffect
+        }
+        val name = sheetLoadName ?: return@LaunchedEffect
+        if (!state.loadingModel && state.modelLoaded && state.modelName == name) {
+            delay(1000)
+            showModels = false
+            sheetLoadName = null
+        }
+    }
+    LaunchedEffect(state.memoryWarning) {
+        if (state.memoryWarning != null) {
+            showModels = false
+            sheetLoadName = null
         }
     }
 
@@ -339,15 +367,25 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
 
     if (showModels) {
         ModalBottomSheet(
-            onDismissRequest = { showModels = false },
+            onDismissRequest = {
+                showModels = false
+                sheetLoadName = null
+            },
             sheetState = sheetState,
+            containerColor = ObsidianTheme.palette.surface,
+            scrimColor = if (ObsidianTheme.palette.isDark) {
+                Color.Black.copy(alpha = 0.62f)
+            } else {
+                Color.Black.copy(alpha = 0.30f)
+            },
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             ModelsSheet(
                 state = state,
                 onPick = { picker.launch(arrayOf("*/*")) },
-                onLoad = {
-                    viewModel.loadModel(it)
-                    showModels = false
+                onLoad = { file ->
+                    sheetLoadName = file.name
+                    viewModel.loadModel(file)
                 },
                 onDelete = viewModel::deleteModel,
                 onUnload = viewModel::unloadModel,
@@ -360,6 +398,13 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         ModalBottomSheet(
             onDismissRequest = { showSettings = false },
             sheetState = sheetState,
+            containerColor = ObsidianTheme.palette.surface,
+            scrimColor = if (ObsidianTheme.palette.isDark) {
+                Color.Black.copy(alpha = 0.62f)
+            } else {
+                Color.Black.copy(alpha = 0.30f)
+            },
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             SettingsSheet(
                 state = state,
@@ -390,46 +435,90 @@ private fun MemoryWarningDialog(
     onLoadAnyway: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Памяти может не хватить") },
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = palette.card,
+        title = {
+            Column {
+                Eyebrow(text = "память", color = palette.textMuted)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Памяти может не хватить",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = palette.textPrimary,
+                )
+            }
+        },
         text = {
             Column {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(palette.surface)
+                        .border(1.dp, palette.hairline, MaterialTheme.shapes.small)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("НУЖНО", style = EyebrowStyle, color = palette.textMuted)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "≈ ${formatRam(warning.needMb)}",
+                            style = MonoNumeric.copy(color = palette.textPrimary),
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .width(1.dp)
+                            .height(30.dp)
+                            .background(palette.hairline),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("СВОБОДНО", style = EyebrowStyle, color = palette.textMuted)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            formatRam(warning.availMb),
+                            style = MonoNumeric.copy(color = palette.error),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 Text(
                     "Для этой модели нужно примерно ${formatRam(warning.needMb)} " +
-                        "(файл + KV-кэш + запас), а свободно ${formatRam(warning.availMb)}. " +
-                        "С mmap модель может загрузиться, но система может её выгрузить.",
-                    style = MaterialTheme.typography.bodyMedium,
+                        "(файл + KV-кэш + запас). С mmap модель может загрузиться, " +
+                        "но система может её выгрузить.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.textSecondary,
                 )
-                Spacer(Modifier.height(12.dp))
-                Button(
+                Spacer(Modifier.height(14.dp))
+                ObsidianButton(
+                    text = if (busy) "Освобождаю память…" else "Освободить память",
                     onClick = onFreeMemory,
-                    modifier = Modifier.fillMaxWidth(),
                     enabled = !busy,
-                ) {
-                    Text(if (busy) "Освобождаю память…" else "Освободить память")
-                }
-                Spacer(Modifier.height(4.dp))
-                TextButton(
+                )
+                Spacer(Modifier.height(7.dp))
+                ObsidianButton(
+                    text = "Уменьшить контекст до ${warning.suggestedCtx} и KV q8_0",
                     onClick = onReduce,
-                    modifier = Modifier.fillMaxWidth(),
                     enabled = !busy,
-                ) {
-                    Text("Уменьшить контекст до ${warning.suggestedCtx} и KV q8_0")
-                }
-                TextButton(
+                    style = ObsidianButtonStyle.Secondary,
+                )
+                Spacer(Modifier.height(7.dp))
+                ObsidianButton(
+                    text = "Всё равно загрузить (mmap)",
                     onClick = onLoadAnyway,
-                    modifier = Modifier.fillMaxWidth(),
                     enabled = !busy,
-                ) {
-                    Text("Всё равно загрузить (mmap)")
-                }
+                    style = ObsidianButtonStyle.Ghost,
+                )
             }
         },
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onCancel, enabled = !busy) {
-                Text("Отмена")
+                Text("Отмена", color = palette.textSecondary)
             }
         },
     )
