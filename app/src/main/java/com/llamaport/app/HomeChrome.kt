@@ -80,14 +80,15 @@ import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.Hairline
 import com.llamaport.app.ui.components.ObsidianButton
-import com.llamaport.app.ui.components.ObsidianCore
 import com.llamaport.app.ui.components.ObsidianIconButton
+import com.llamaport.app.ui.components.SilverPulseOverlay
 import com.llamaport.app.ui.components.StateDot
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
 import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
+import com.llamaport.app.ui.robot.RobotStage
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
 import com.llamaport.app.ui.theme.EyebrowStyle
@@ -715,7 +716,7 @@ internal fun HomeEmptyState(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewportHeight = maxHeight
         val compact = viewportHeight < 640.dp
-        val coreSize = if (compact) 206.dp else 268.dp
+        val heroSize = if (compact) 210.dp else 272.dp
         // The composition centers when it fits and scrolls on short screens,
         // so the picker and prompt cards are never clipped.
         Box(
@@ -742,15 +743,30 @@ internal fun HomeEmptyState(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Reveal(index = 0) {
-                    ObsidianCore(
-                        state = robotStateFor(state),
-                        size = coreSize,
-                        loadingProgress = loadingProgress,
-                        inputActive = state.input.isNotEmpty(),
-                        completionTick = completionTick,
-                        active = true,
-                        onLongPress = { showRobotDemo = true },
-                    )
+                    Box {
+                        // The pixel robot is the hero: it hangs on a static
+                        // Obsidian stage and performs on its own — looks,
+                        // blinks, emotions, nods and glitches — plus a
+                        // different reaction for every tap.
+                        RobotStage(size = heroSize) {
+                            AsciiRobot(
+                                state = robotStateFor(state),
+                                size = heroSize * 0.62f,
+                                progress = loadingProgress,
+                                active = true,
+                                lively = true,
+                                onLongPress = { showRobotDemo = true },
+                            )
+                        }
+                        // One short local silver bloom when a model finishes
+                        // loading or an answer completes.
+                        SilverPulseOverlay(
+                            trigger = completionTick,
+                            color = palette.silver,
+                            modifier = Modifier.matchParentSize(),
+                            maxScale = 1.15f,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(if (compact) 10.dp else 16.dp))
                 Reveal(index = 1) {

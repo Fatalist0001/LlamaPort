@@ -124,3 +124,24 @@ All APKs are signed with the modern APK signature schemes (v2 + v3):
 - `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
 
 The project build now explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
+
+## Robot performance (home hero)
+
+The animated Obsidian Core object was retired from the empty home; the pixel robot from `main` is now the central hero on a static stage (`RobotStage`: silver reflection, precision ring, hairline floor, no animation of its own).
+
+`ui/robot/RobotPerformance.kt` adds a deterministic pose catalogue:
+
+- **20 idle behaviours:** Blink, DoubleBlink, LookLeft, LookRight, LookUp, LookDown, LookAround, EyeRoll, Squint, Happy, Wink, Sad, Angry, Curious, Nod, ShakeHead, Yawn, AntennaTwitch, Glitch, Sway.
+- **16 tap reactions:** Hop, Giggle, Wink, LookAtTap, Surprised, Dizzy, Annoyed, Shy, Laugh, No, Yes, RollEyes, Glitch, Sleepy, Spark, Tilt.
+
+Both lists are drawn as complete weighted shuffle cycles: every variant appears once before any repeat. Taps are normalised against the robot centre, so `LookAtTap`/`Tilt` (and the head tilt) follow the pressed spot. A light haptic confirms every reaction.
+
+Mechanics:
+
+- one 16 fps ticker (~60 ms) drives breathing, cell effects and the scheduler; no 60 fps transitions on home;
+- idle performance runs in `Idle` **and** `Sleeping` (dim body, bright animated eyes/mouth); loading/thinking/generating/error keep their functional overlays;
+- `lively = false` for the 32 dp drawer robot keeps that header calm;
+- reduced motion disables the ticker and the whole performance; two home screenshots 2 s apart differ by 0 pixels outside the status bar;
+- the footer drawer robot and all chat avatars are unchanged; no new dependencies or assets.
+
+Verification on the device: 17 distinct idle behaviours were observed in 90 s (the cycle guarantees all 20), and 20 taps produced all 16 reactions. The home robot is drawn at 168 dp inside a 272 dp stage; the old 60 fps `ObsidianCore` is no longer in the composition.
