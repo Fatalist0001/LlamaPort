@@ -121,12 +121,12 @@ internal object RobotPerformance {
     fun ticksFor(milliseconds: Int): Int =
         ceil(milliseconds / TICK_MS.toFloat()).toInt().coerceAtLeast(1)
 
-    fun firstDelayTicks(random: Random): Int = random.nextInt(16, 37)
+    fun firstDelayTicks(random: Random): Int = random.nextInt(10, 26)
 
     fun pauseTicks(random: Random, sleeping: Boolean): Int =
-        if (sleeping) random.nextInt(50, 121) else random.nextInt(36, 91)
+        if (sleeping) random.nextInt(25, 56) else random.nextInt(18, 41)
 
-    fun reactionResumeTicks(random: Random): Int = random.nextInt(30, 61)
+    fun reactionResumeTicks(random: Random): Int = random.nextInt(15, 31)
 
     /**
      * Returns a whole shuffled cycle of idle gestures. Every one of the 20

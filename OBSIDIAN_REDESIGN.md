@@ -145,3 +145,11 @@ Mechanics:
 - the footer drawer robot and all chat avatars are unchanged; no new dependencies or assets.
 
 Verification on the device: 17 distinct idle behaviours were observed in 90 s (the cycle guarantees all 20), and 20 taps produced all 16 reactions. The home robot is drawn at 168 dp inside a 272 dp stage; the old 60 fps `ObsidianCore` is no longer in the composition.
+
+### Robot follow-up (after the first push)
+
+- **Haptics on every tap**, including reduced motion and Loading/Error states. Long-press has its own haptic.
+- **Lifecycle-aware ticker:** the 16 fps clock runs inside `repeatOnLifecycle(STARTED)`. When the app is backgrounded, the ticker is cancelled; on return it resumes. Measured: 4 frames during the 6 s after HOME, versus a continuously ticking robot before.
+- **Adaptive idle clock:** 60 ms during gestures/reactions, 120 ms between them for breathing only. Idle frame rate fell to ~9.5 fps and CPU samples dropped to ~18–39% of one core on the debug build (was ~28–38% at a fixed 16 fps; release not profiled).
+- **Accessibility:** the robot now exposes `contentDescription = "Робот LlamaPort"`, button role and an `onClick` label.
+- **Verification:** all 16 reactions observed across 20 taps; 18–19 distinct idle behaviours observed per minute, the shuffle cycle guarantees all 20 across a full cycle; model-loaded `Idle` verified (`sleeping=false` actions) as well as the no-model `Sleeping` state; reduced motion again produced 0 differing app pixels; long-press demo opens; light theme renders without a crash; background pause verified.

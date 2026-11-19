@@ -33,6 +33,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextLayoutResult
@@ -47,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.llamaport.app.ui.theme.ObsidianTheme
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -63,8 +71,11 @@ private val SCRAMBLE = "*+#=:.·".toList()
 /** Everything we ever render, pre-measured once per size. */
 private val ALL_GLYPHS = (SCRAMBLE + listOf(BLOCK, 'x', '-', '·')).toSet()
 
-/** Cell tick: ~16 fps for the pixel-style animation + performance scheduler. */
+/** Cell tick during a gesture/reaction: ~16 fps. */
 private const val TICK_MS = 60L
+
+/** Slower breathing tick while the robot only hangs and waits. */
+private const val IDLE_TICK_MS = 120L
 
 /** One slow breathing cycle in ticks (about 2.5 s at 50 ms per tick). */
 private const val BREATH_TICKS = 50
@@ -137,10 +148,16 @@ fun AsciiRobot(
     // so a state change never leaves a coroutine holding a stale mood.
     var frame by remember { mutableIntStateOf(0) }
     val liveState by rememberUpdatedState(state)
-    LaunchedEffect(active, reduced, lively) {
-        if (active && !reduced) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(active, reduced, lively, lifecycleOwner) {
+        if (!active || reduced) return@LaunchedEffect
+        // Tie the only animation clock to STARTED: when the app is backgrounded
+        // the ticker is cancelled and revived on return. Gestures run at 60 ms;
+        // between them the robot only breathes, so the tick slows to 120 ms.
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                delay(TICK_MS)
+                val motion = tapReaction != null || idleAction != null
+                delay(if (motion) TICK_MS else IDLE_TICK_MS)
                 frame++
                 val sleeping = liveState == RobotState.Sleeping
                 val performsNow = lively &&
@@ -249,6 +266,8 @@ fun AsciiRobot(
     // --- tap: weighted reaction aimed at the pressed spot ------------------
     fun handleTap(offset: Offset?) {
         onTap?.invoke()
+        // Feedback even with reduced motion or in a non-performing state.
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         if (!performs) return
         // Normalise the tap relative to the robot centre: the reaction looks
         // towards where the user actually touched.
@@ -266,7 +285,6 @@ fun AsciiRobot(
         }
         val reaction = reactionCycle.first()
         reactionCycle = reactionCycle.drop(1)
-        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         tapReaction = reaction
         reactionStartFrame = frame
         reactionTicks = RobotPerformance.ticksFor(reaction.durationMs)
@@ -294,10 +312,21 @@ fun AsciiRobot(
         modifier = modifier
             .size(size)
             .aspectRatio(1f)
+            .semantics {
+                contentDescription = "Робот LlamaPort"
+                role = Role.Button
+                onClick(label = "Взаимодействовать") {
+                    handleTap(null)
+                    true
+                }
+            }
             .pointerInput(performs, onTap, onLongPress) {
                 detectTapGestures(
                     onTap = { offset -> handleTap(offset) },
-                    onLongPress = { onLongPress?.invoke() },
+                    onLongPress = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress?.invoke()
+                    },
                 )
             },
     ) {
