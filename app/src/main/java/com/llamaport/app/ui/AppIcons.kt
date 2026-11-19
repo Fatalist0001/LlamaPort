@@ -369,4 +369,123 @@ object AppIcons {
             }
         }.build()
     }
+
+    val Plan: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Plan",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd) {
+                moveTo(7f, 2f); lineTo(9f, 2f); lineTo(9f, 4f)
+                lineTo(15f, 4f); lineTo(15f, 2f); lineTo(17f, 2f)
+                lineTo(17f, 4f); lineTo(19f, 4f)
+                curveTo(20.1f, 4f, 21f, 4.9f, 21f, 6f)
+                lineTo(21f, 20f)
+                curveTo(21f, 21.1f, 20.1f, 22f, 19f, 22f)
+                lineTo(5f, 22f)
+                curveTo(3.9f, 22f, 3f, 21.1f, 3f, 20f)
+                lineTo(3f, 6f)
+                curveTo(3f, 4.9f, 3.9f, 4f, 5f, 4f)
+                lineTo(7f, 4f)
+                close()
+                moveTo(5f, 9f); lineTo(19f, 9f); lineTo(19f, 20f); lineTo(5f, 20f); close()
+                moveTo(7.2f, 11.2f); lineTo(10.2f, 11.2f); lineTo(10.2f, 14.2f); lineTo(7.2f, 14.2f); close()
+                moveTo(11.6f, 11.2f); lineTo(16.8f, 11.2f); lineTo(16.8f, 12.5f); lineTo(11.6f, 12.5f); close()
+                moveTo(11.6f, 13.5f); lineTo(16.8f, 13.5f); lineTo(16.8f, 14.8f); lineTo(11.6f, 14.8f); close()
+                moveTo(7.2f, 16.4f); lineTo(16.8f, 16.4f); lineTo(16.8f, 17.7f); lineTo(7.2f, 17.7f); close()
+            }
+        }.build()
+    }
+
+    val Explain: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Explain",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 7.2f); lineTo(3f, 7.2f); close()
+                moveTo(3f, 10.9f); lineTo(15.5f, 10.9f); lineTo(15.5f, 13.1f); lineTo(3f, 13.1f); close()
+                moveTo(3f, 16.8f); lineTo(19f, 16.8f); lineTo(19f, 19f); lineTo(3f, 19f); close()
+            }
+        }.build()
+    }
+
+    val Idea: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Idea",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(12f, 2f)
+                curveTo(7.6f, 2f, 4f, 5.6f, 4f, 10f)
+                curveTo(4f, 12.6f, 5.2f, 14.9f, 7f, 16.5f)
+                lineTo(7f, 19f)
+                curveTo(7f, 19.6f, 7.4f, 20f, 8f, 20f)
+                lineTo(16f, 20f)
+                curveTo(16.6f, 20f, 17f, 19.6f, 17f, 19f)
+                lineTo(17f, 16.5f)
+                curveTo(18.8f, 14.9f, 20f, 12.6f, 20f, 10f)
+                curveTo(20f, 5.6f, 16.4f, 2f, 12f, 2f)
+                close()
+                moveTo(9f, 21f); lineTo(15f, 21f); lineTo(15f, 22.2f); lineTo(9f, 22.2f); close()
+            }
+        }.build()
+    }
+
+    val Letter: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Letter",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd) {
+                moveTo(3f, 5f); lineTo(21f, 5f); lineTo(21f, 19f); lineTo(3f, 19f); close()
+                moveTo(4.6f, 7.2f); lineTo(12f, 13f); lineTo(19.4f, 7.2f)
+                lineTo(18.1f, 6.4f); lineTo(12f, 11f); lineTo(5.9f, 6.4f); close()
+            }
+        }.build()
+    }
+
+    val Copy: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Copy",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd) {
+                moveTo(8f, 2f); lineTo(20f, 2f); lineTo(20f, 15f); lineTo(18f, 15f)
+                lineTo(18f, 4f); lineTo(8f, 4f); close()
+                moveTo(4f, 6f); lineTo(16f, 6f); lineTo(16f, 22f); lineTo(4f, 22f); close()
+                moveTo(6f, 8f); lineTo(14f, 8f); lineTo(14f, 20f); lineTo(6f, 20f); close()
+            }
+        }.build()
+    }
+
+    val Check: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Check",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(9.2f, 16.4f); lineTo(4.8f, 12f); lineTo(3.4f, 13.4f)
+                lineTo(9.2f, 19.2f); lineTo(20.8f, 7.6f); lineTo(19.4f, 6.2f); close()
+            }
+        }.build()
+    }
 }

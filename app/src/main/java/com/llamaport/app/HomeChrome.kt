@@ -9,33 +9,41 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Create
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
@@ -43,9 +51,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,11 +63,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Calendar
+import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.components.Eyebrow
+import com.llamaport.app.ui.components.ObsidianButton
+import com.llamaport.app.ui.components.ObsidianCore
+import com.llamaport.app.ui.components.ObsidianIconButton
+import com.llamaport.app.ui.components.StateDot
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
@@ -67,6 +85,8 @@ import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
+import com.llamaport.app.ui.theme.EyebrowStyle
+import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlin.math.PI
 import kotlin.math.sin
@@ -81,8 +101,9 @@ internal fun robotStateFor(state: UiState): RobotState = when {
 }
 
 /**
- * Model chip for the top bar: name plus a state dot.
- * Tap opens the model sheet — the only place the model list lives.
+ * Model chip for the top bar. It reads as a small technical module: state
+ * label in mono caps, model name, state halo and a chevron opening the model
+ * sheet. Tap still opens the model list — the only place it lives.
  */
 @Composable
 internal fun ModelChip(
@@ -90,65 +111,154 @@ internal fun ModelChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val dotTarget = when {
-        state.serviceDead -> scheme.error
-        state.loadingModel || state.generating -> scheme.tertiary
-        state.modelLoaded -> scheme.primary
-        else -> scheme.outline
+    val palette = ObsidianTheme.palette
+    val statusColor = when {
+        state.serviceDead -> palette.error
+        state.loadingModel || state.generating -> palette.silver
+        state.modelLoaded -> palette.success
+        else -> palette.textMuted
     }
-    val dotColor by animateColorAsState(
-        targetValue = dotTarget,
-        animationSpec = tween(durationMillis = MotionTokens.Durations.ENTER),
-        label = "modelDotColor",
-    )
-    val reduced = LocalReducedMotion.current
+    val statusLabel = when {
+        state.serviceDead -> "остановлена"
+        state.loadingModel -> "загрузка"
+        state.generating -> "генерация"
+        state.modelLoaded -> "готова"
+        else -> "не выбрана"
+    }
+    val pulse = state.loadingModel || state.generating || state.serviceDead
 
-    Surface(
-        shape = PillShape,
-        color = scheme.surfaceVariant,
+    Row(
         modifier = modifier
-            .widthIn(max = 260.dp)
-            .pressable(onClick = onClick),
+            .height(48.dp)
+            .clip(PillShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(palette.card, palette.surface),
+                ),
+            )
+            .border(
+                1.dp,
+                if (state.modelLoaded) palette.silver.copy(alpha = 0.26f) else palette.hairline,
+                PillShape,
+            )
+            .pressable(hapticsEnabled = false, onClick = onClick)
+            .padding(start = 7.dp, end = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // The infinite transition only exists while the dot actually
-            // pulses; at rest (and with reduced motion) nothing subscribes to
-            // the frame clock.
-            if (!reduced && (state.loadingModel || state.generating || state.serviceDead)) {
-                val pulseT by rememberInfiniteTransition(label = "modelDotPulse").animateFloat(
-                    initialValue = 0.35f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = 700, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "modelDotPulseT",
-                )
-                Box(
-                    Modifier
-                        .size(9.dp)
-                        .graphicsLayer { alpha = pulseT }
-                        .background(dotColor, CircleShape),
-                )
-            } else {
-                Box(
-                    Modifier
-                        .size(9.dp)
-                        .background(dotColor, CircleShape),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
+        Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+            val haloColor by animateColorAsState(
+                targetValue = statusColor,
+                animationSpec = tween(MotionTokens.Durations.ENTER),
+                label = "modelHalo",
+            )
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .border(1.dp, haloColor.copy(alpha = 0.16f), CircleShape),
+            )
+            StateDot(color = statusColor, size = 6.dp, pulse = pulse)
+        }
+        Spacer(Modifier.width(9.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = statusLabel.uppercase(),
+                style = EyebrowStyle,
+                color = statusColor.copy(alpha = 0.92f),
+                maxLines = 1,
+            )
             Text(
                 text = state.modelName ?: "Выбрать модель",
                 style = MaterialTheme.typography.labelLarge,
+                color = palette.textPrimary,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(6.dp))
+        Icon(
+            imageVector = AppIcons.Chevron,
+            contentDescription = null,
+            tint = palette.textMuted,
+            modifier = Modifier.size(15.dp),
+        )
+    }
+}
+
+/**
+ * Custom top bar: menu, technical model module, new chat. It owns the status
+ * bar inset and the hairline that separates chrome from content.
+ */
+@Composable
+internal fun ObsidianTopBar(
+    state: UiState,
+    onMenu: () -> Unit,
+    onModelClick: () -> Unit,
+    onNewChat: () -> Unit,
+) {
+    val palette = ObsidianTheme.palette
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        palette.background.copy(alpha = 0.99f),
+                        palette.background.copy(alpha = 0.92f),
+                    ),
+                ),
+            )
+            .windowInsetsPadding(WindowInsets.statusBars),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ObsidianIconButton(
+                icon = AppIcons.Menu,
+                contentDescription = "Меню",
+                onClick = onMenu,
+                container = palette.card,
+                borderColor = palette.hairline,
+                tint = palette.textPrimary,
+                size = 42.dp,
+                iconSize = 19.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+            ModelChip(
+                state = state,
+                onClick = onModelClick,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(10.dp))
+            ObsidianIconButton(
+                icon = Icons.Filled.Add,
+                contentDescription = "Новый чат",
+                onClick = onNewChat,
+                enabled = !state.generating,
+                container = palette.card,
+                borderColor = palette.hairline,
+                tint = if (state.generating) palette.textMuted else palette.textPrimary,
+                size = 42.dp,
+                iconSize = 20.dp,
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            palette.hairline.copy(alpha = 0f),
+                            palette.hairlineStrong,
+                            palette.hairline.copy(alpha = 0f),
+                        ),
+                    ),
+                ),
+        )
     }
 }
 
@@ -156,7 +266,6 @@ internal fun ModelChip(
  * Side drawer: chat history plus settings. Replaces the old "chats" and
  * "settings" sheets.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AppDrawer(
     state: UiState,
@@ -168,6 +277,7 @@ internal fun AppDrawer(
     onRenameSession: (String, String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     var renaming by remember { mutableStateOf<SessionSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
     // Empty chats are scratch space: only the active one has a row.
@@ -177,11 +287,15 @@ internal fun AppDrawer(
         )
     }
 
-    ModalDrawerSheet {
+    ModalDrawerSheet(
+        drawerContainerColor = palette.surface,
+        drawerContentColor = palette.textPrimary,
+        drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+    ) {
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AsciiRobot(
@@ -201,13 +315,13 @@ internal fun AppDrawer(
                         Text(
                             state.modelName ?: "модель не загружена",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = palette.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                HorizontalDivider()
+                HorizontalDivider(color = palette.hairline)
                 Row(
                     Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -228,7 +342,7 @@ internal fun AppDrawer(
                     Text(
                         "Пока нет чатов",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = palette.textSecondary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                     Spacer(Modifier.weight(1f))
@@ -241,9 +355,8 @@ internal fun AppDrawer(
                             item(key = "group-${group.name}") {
                                 Text(
                                     group.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.SemiBold,
+                                    style = EyebrowStyle,
+                                    color = palette.textMuted,
                                     modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp),
                                 )
                             }
@@ -265,7 +378,7 @@ internal fun AppDrawer(
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(color = palette.hairline)
                 NavigationDrawerItem(
                     label = { Text("Настройки") },
                     icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
@@ -276,14 +389,14 @@ internal fun AppDrawer(
                 if (state.backendInfo.isNotBlank()) {
                     Text(
                         state.backendInfo,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = EyebrowStyle,
+                        color = palette.textMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     )
                 }
-                }
+            }
             // Same SnackbarHostState as the scaffold: while the drawer is open
             // this host is the visible one, so "Отменить" is reachable.
             SnackbarHost(
@@ -298,6 +411,8 @@ internal fun AppDrawer(
     renaming?.let { session ->
         AlertDialog(
             onDismissRequest = { renaming = null },
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = palette.card,
             title = { Text("Переименовать чат") },
             text = {
                 OutlinedTextField(
@@ -305,6 +420,7 @@ internal fun AppDrawer(
                     onValueChange = { renameText = it },
                     singleLine = true,
                     label = { Text("Название") },
+                    shape = MaterialTheme.shapes.small,
                 )
             },
             confirmButton = {
@@ -325,8 +441,7 @@ internal fun AppDrawer(
             },
         )
     }
-
-    }
+}
 
 private enum class SessionGroup(val label: String) {
     Today("Сегодня"),
@@ -363,12 +478,23 @@ private fun Calendar.startOfDay(): Long {
     return copy.timeInMillis
 }
 
+private data class QuickAction(
+    val label: String,
+    val icon: ImageVector,
+)
+
+private val QUICK_ACTIONS = listOf(
+    QuickAction("Составь план на день", AppIcons.Plan),
+    QuickAction("Объясни простыми словами", AppIcons.Explain),
+    QuickAction("Придумай идею", AppIcons.Idea),
+    QuickAction("Напиши короткое письмо", AppIcons.Letter),
+)
+
 /**
- * Empty state: the robot in the middle, "Выбрать модель" while no model is
- * loaded, prompt suggestion chips once it is. A long-press opens the robot
- * state demo (debug).
+ * Empty state: the Obsidian Core, a precise wordmark, and either the model
+ * picker or four compact prompt cards. A long-press on the Core opens the
+ * hidden robot state demo (debug), exactly as before.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun HomeEmptyState(
     state: UiState,
@@ -376,6 +502,7 @@ internal fun HomeEmptyState(
     onChooseModel: () -> Unit,
     onSuggestion: (String) -> Unit,
 ) {
+    val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
     var showRobotDemo by remember { mutableStateOf(false) }
     if (showRobotDemo) {
@@ -392,6 +519,19 @@ internal fun HomeEmptyState(
                 animationSpec = tween(durationMillis = MotionTokens.Durations.TRANSITION),
             )
         }
+    }
+
+    // A short silver bloom after a model finishes loading or generation ends.
+    var completionTick by remember { mutableIntStateOf(0) }
+    var wasLoading by remember { mutableStateOf(state.loadingModel) }
+    var wasGenerating by remember { mutableStateOf(state.generating) }
+    LaunchedEffect(state.loadingModel) {
+        if (wasLoading && !state.loadingModel) completionTick++
+        wasLoading = state.loadingModel
+    }
+    LaunchedEffect(state.generating) {
+        if (wasGenerating && !state.generating) completionTick++
+        wasGenerating = state.generating
     }
 
     val loadingProgress = when {
@@ -414,88 +554,190 @@ internal fun HomeEmptyState(
         }
     }
 
-    val suggestions = listOf(
-        "Составь план на день",
-        "Объясни простыми словами",
-        "Придумай идею",
-        "Напиши короткое письмо",
-    )
+    val statusColor = when {
+        state.serviceDead -> palette.error
+        state.loadingModel || state.generating -> palette.silver
+        state.modelLoaded -> palette.success
+        else -> palette.textMuted
+    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 24.dp)
-            .graphicsLayer {
-                translationX = if (shake.value in 0.001f..0.999f) {
-                    sin(shake.value * 4f * PI).toFloat() * 10.dp.toPx() * (1f - shake.value)
-                } else {
-                    0f
-                }
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Reveal(index = 0) {
-            AsciiRobot(
-                state = robotStateFor(state),
-                size = 168.dp,
-                progress = loadingProgress,
-                onTap = {},
-                onLongPress = { showRobotDemo = true },
-            )
-        }
-        Spacer(Modifier.height(16.dp))
-        Reveal(index = 1) {
-            Text(
-                "LlamaPort",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Reveal(index = 2) {
-            Text(
-                text = when {
-                    state.loadingModel -> "Загружаю модель…"
-                    state.serviceDead -> "Процесс инференса остановлен"
-                    !state.modelLoaded ->
-                        "Локальный чат на llama.cpp. Модель работает прямо на телефоне, без интернета."
-                    else -> "Модель готова. С чего начнём?"
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxHeight < 640.dp
+        val coreSize = if (compact) 206.dp else 268.dp
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = 24.dp,
+                    vertical = if (compact) 10.dp else 20.dp,
+                )
+                .graphicsLayer {
+                    translationX = if (shake.value in 0.001f..0.999f) {
+                        sin(shake.value * 4f * PI).toFloat() * 10.dp.toPx() * (1f - shake.value)
+                    } else {
+                        0f
+                    }
                 },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-        }
-
-        if (!state.modelLoaded) {
-            Spacer(Modifier.height(24.dp))
-            Reveal(index = 3) {
-                Button(
-                    onClick = onChooseModel,
-                    modifier = Modifier
-                        .widthIn(max = 300.dp)
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp),
-                ) {
-                    Text("Выбрать модель", style = MaterialTheme.typography.titleMedium)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Reveal(index = 0) {
+                ObsidianCore(
+                    state = robotStateFor(state),
+                    size = coreSize,
+                    loadingProgress = loadingProgress,
+                    inputActive = state.input.isNotEmpty(),
+                    completionTick = completionTick,
+                    active = true,
+                    onLongPress = { showRobotDemo = true },
+                )
+            }
+            Spacer(Modifier.height(if (compact) 10.dp else 16.dp))
+            Reveal(index = 1) {
+                Text(
+                    "LlamaPort",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                palette.textPrimary,
+                                palette.silver,
+                                palette.silverDim,
+                            ),
+                        ),
+                    ),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Reveal(index = 2) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StateDot(
+                        color = statusColor,
+                        size = 5.dp,
+                        pulse = state.loadingModel || state.generating,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Eyebrow(
+                        text = when {
+                            state.loadingModel -> "загрузка модели"
+                            state.serviceDead -> "инференс остановлен"
+                            state.modelLoaded -> "локальный интеллект · готов"
+                            else -> "локальный интеллект · llama.cpp"
+                        },
+                        color = palette.textMuted,
+                        tick = false,
+                    )
                 }
             }
-        } else {
-            Spacer(Modifier.height(24.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                suggestions.forEachIndexed { index, suggestion ->
-                    Reveal(index = 3 + index) {
-                        SuggestionChip(
-                            onClick = { onSuggestion(suggestion) },
-                            label = { Text(suggestion) },
+            Spacer(Modifier.height(10.dp))
+            Reveal(index = 3) {
+                Text(
+                    text = when {
+                        state.loadingModel -> "Загружаю модель…"
+                        state.serviceDead -> "Процесс инференса остановлен"
+                        !state.modelLoaded ->
+                            "Модель работает прямо на телефоне, без интернета. " +
+                                "Выберите GGUF-файл, чтобы начать."
+                        else -> "Модель готова. С чего начнём?"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 340.dp),
+                )
+            }
+
+            if (!state.modelLoaded) {
+                Spacer(Modifier.height(if (compact) 16.dp else 24.dp))
+                Reveal(index = 4) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        ObsidianButton(
+                            text = "Выбрать модель",
+                            onClick = onChooseModel,
+                            leadingIcon = AppIcons.Document,
+                            modifier = Modifier.widthIn(max = 300.dp),
                         )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "GGUF · ЛОКАЛЬНО · БЕЗ СЕТИ",
+                            style = EyebrowStyle,
+                            color = palette.textMuted,
+                        )
+                    }
+                }
+            } else {
+                Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
+                Reveal(index = 4) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        QUICK_ACTIONS.chunked(2).forEach { rowActions ->
+                            Row(
+                                Modifier.fillMaxWidth().widthIn(max = 430.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                for (action in rowActions) {
+                                    QuickActionCard(
+                                        action = action,
+                                        onClick = { onSuggestion(action.label) },
+                                        modifier = Modifier.weight(1f),
+                                        compact = compact,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+
+    }
+}
+
+@Composable
+private fun QuickActionCard(
+    action: QuickAction,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean,
+) {
+    val palette = ObsidianTheme.palette
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val border by animateColorAsState(
+        targetValue = if (pressed) palette.silver.copy(alpha = 0.5f) else palette.hairline,
+        animationSpec = tween(MotionTokens.Durations.MICRO),
+        label = "quickCardBorder",
+    )
+    val background by animateColorAsState(
+        targetValue = if (pressed) palette.nested else palette.card,
+        animationSpec = tween(MotionTokens.Durations.MICRO),
+        label = "quickCardBackground",
+    )
+    Column(
+        modifier = modifier
+            .height(if (compact) 82.dp else 88.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(background)
+            .border(1.dp, border, MaterialTheme.shapes.medium)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Icon(
+            imageVector = action.icon,
+            contentDescription = null,
+            tint = if (pressed) palette.silver else palette.silverDim,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = action.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = palette.textPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

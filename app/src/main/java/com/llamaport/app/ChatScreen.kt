@@ -6,7 +6,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,7 +18,10 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +45,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,11 +60,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalBottomSheet
@@ -71,7 +77,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -92,22 +97,39 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
+import com.llamaport.app.ui.components.MonoValue
+import com.llamaport.app.ui.components.ObsidianBackground
+import com.llamaport.app.ui.components.ObsidianIconButton
+import com.llamaport.app.ui.components.ObsidianProgressLine
+import com.llamaport.app.ui.components.SilverPulseOverlay
+import com.llamaport.app.ui.components.SilverShimmerLine
+import com.llamaport.app.ui.components.StateDot
 import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
+import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.settings.SettingsSheet
+import com.llamaport.app.ui.theme.MonoNumeric
+import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -154,8 +176,16 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         }
     }
 
+    val palette = ObsidianTheme.palette
+
+    ObsidianBackground(Modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
+        scrimColor = if (palette.isDark) {
+            Color.Black.copy(alpha = 0.68f)
+        } else {
+            Color.Black.copy(alpha = 0.32f)
+        },
         drawerContent = {
             AppDrawer(
                 state = state,
@@ -198,26 +228,15 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         },
     ) {
         Scaffold(
+            containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(AppIcons.Menu, contentDescription = "Меню")
-                        }
-                    },
-                    title = {
-                        ModelChip(
-                            state = state,
-                            onClick = { showModels = true },
-                        )
-                    },
-                    actions = {
-                        IconButton(onClick = onNewChat, enabled = !state.generating) {
-                            Icon(Icons.Filled.Add, contentDescription = "Новый чат")
-                        }
-                    },
+                ObsidianTopBar(
+                    state = state,
+                    onMenu = { scope.launch { drawerState.open() } },
+                    onModelClick = { showModels = true },
+                    onNewChat = onNewChat,
                 )
             },
             bottomBar = {
@@ -244,44 +263,62 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 StatusStrip(state, onFreeMemory = viewModel::freeMemory)
 
                 if (state.serviceDead) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(palette.error.copy(alpha = 0.10f))
+                            .border(1.dp, palette.error.copy(alpha = 0.30f), MaterialTheme.shapes.small)
+                            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        StateDot(color = palette.error, size = 6.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Процесс инференса остановлен",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = palette.textPrimary,
+                            )
+                            Text(
+                                "Модель выгружена. Можно загрузить её снова.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary,
+                            )
+                        }
+                        TextButton(
+                            onClick = viewModel::reloadModel,
+                            enabled = state.modelName != null && !state.loadingModel,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Процесс инференса остановлен", style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    "Модель выгружена. Можно загрузить её снова.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            }
-                            TextButton(
-                                onClick = viewModel::reloadModel,
-                                enabled = state.modelName != null && !state.loadingModel,
-                            ) {
-                                Text("Перезапустить")
-                            }
+                            Text("Перезапустить", color = palette.silver)
                         }
                     }
                 }
 
                 val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
                 when {
-                    state.loadingModel -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    promptProgress != null -> LinearProgressIndicator(
-                        progress = {
-                            if (promptProgress.total > 0) {
-                                promptProgress.processed.toFloat() / promptProgress.total
-                            } else {
-                                0f
-                            }
+                    state.loadingModel -> ObsidianProgressLine(
+                        progress = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .height(3.dp),
+                        trackColor = palette.elevated,
+                        accent = palette.silver,
+                    )
+                    promptProgress != null -> ObsidianProgressLine(
+                        progress = if (promptProgress.total > 0) {
+                            promptProgress.processed.toFloat() / promptProgress.total
+                        } else {
+                            0f
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .height(3.dp),
+                        trackColor = palette.elevated,
+                        accent = palette.silver,
                     )
                 }
 
@@ -297,6 +334,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 }
             }
         }
+    }
     }
 
     if (showModels) {
@@ -399,42 +437,74 @@ private fun MemoryWarningDialog(
 
 @Composable
 private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val progress = state.progress
-        val left = when {
-            progress != null && progress.phase == GenerationPhase.PROMPT ->
-                "Промпт ${progress.processed}/${progress.total}"
-            state.generating ->
-                "Генерация…"
-            else -> state.status
-        }
-        Text(
-            text = left ?: "",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.labelSmall,
-            color = if (progress != null || state.generating) {
-                MaterialTheme.colorScheme.primary
+    val palette = ObsidianTheme.palette
+    val progress = state.progress
+    val left = when {
+        progress != null && progress.phase == GenerationPhase.PROMPT ->
+            if (progress.total > 0) {
+                "промпт ${progress.processed}/${progress.total}"
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (state.showFreeMemory) {
-            TextButton(
-                onClick = onFreeMemory,
-                enabled = !state.freeMemoryBusy,
-                contentPadding = PaddingValues(horizontal = 6.dp),
+                "промпт ${progress.processed}"
+            }
+        state.generating -> "генерация"
+        else -> state.status
+    }
+    val active = state.generating || progress != null
+    val visible = left != null || state.showFreeMemory
+    val accent = when {
+        state.serviceDead -> palette.error
+        progress != null || state.generating -> palette.silver
+        else -> palette.textMuted
+    }
+
+    AnimatedVisibility(visible = visible) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    if (state.freeMemoryBusy) "…" else "Освободить",
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
+                StateDot(
+                    color = accent,
+                    size = 5.dp,
+                    pulse = state.generating || state.loadingModel,
+                )
+                Spacer(Modifier.width(8.dp))
+                if (left != null) {
+                    Text(
+                        text = left,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.2.sp,
+                        ),
+                        color = if (active) palette.silver else palette.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                if (state.showFreeMemory) {
+                    TextButton(
+                        onClick = onFreeMemory,
+                        enabled = !state.freeMemoryBusy,
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                    ) {
+                        Text(
+                            if (state.freeMemoryBusy) "…" else "Освободить",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.silver,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            if (state.generating) {
+                SilverShimmerLine(
+                    modifier = Modifier.fillMaxWidth().height(1.dp),
+                    color = palette.silver,
                 )
             }
         }
@@ -443,60 +513,69 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
 
 @Composable
 private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.small,
+    val palette = ObsidianTheme.palette
+    Row(
+        Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(palette.card)
+            .border(1.dp, palette.hairline, MaterialTheme.shapes.small)
+            .padding(start = 5.dp, end = 3.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(start = 6.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (attachment.kind == "image") {
-                val bitmap by produceState<ImageBitmap?>(null, attachment.path) {
-                    value = withContext(Dispatchers.IO) { decodeSampledBitmap(attachment.path) }
-                }
-                val image = bitmap
-                if (image != null) {
-                    Image(
-                        bitmap = image,
-                        contentDescription = attachment.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(MaterialTheme.shapes.extraSmall),
-                    )
-                } else {
-                    Icon(
-                        AppIcons.Image,
-                        contentDescription = null,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
+        if (attachment.kind == "image") {
+            val bitmap by produceState<ImageBitmap?>(null, attachment.path) {
+                value = withContext(Dispatchers.IO) { decodeSampledBitmap(attachment.path) }
+            }
+            val image = bitmap
+            if (image != null) {
+                Image(
+                    bitmap = image,
+                    contentDescription = attachment.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(MaterialTheme.shapes.extraSmall),
+                )
             } else {
                 Icon(
-                    AppIcons.Audio,
+                    AppIcons.Image,
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
+                    tint = palette.textSecondary,
+                    modifier = Modifier.size(26.dp),
                 )
             }
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.widthIn(max = 150.dp)) {
-                Text(
-                    attachment.name,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    if (attachment.kind == "image") "изображение" else "аудио",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = "Убрать", modifier = Modifier.size(16.dp))
-            }
+        } else {
+            Icon(
+                AppIcons.Audio,
+                contentDescription = null,
+                tint = palette.textSecondary,
+                modifier = Modifier.size(24.dp),
+            )
         }
+        Spacer(Modifier.width(7.dp))
+        Column(Modifier.widthIn(max = 150.dp)) {
+            Text(
+                attachment.name,
+                style = MaterialTheme.typography.labelMedium,
+                color = palette.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                if (attachment.kind == "image") "изображение" else "аудио",
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.textMuted,
+            )
+        }
+        ObsidianIconButton(
+            icon = Icons.Filled.Close,
+            contentDescription = "Убрать",
+            onClick = onRemove,
+            tint = palette.textSecondary,
+            size = 28.dp,
+            iconSize = 15.dp,
+            shape = MaterialTheme.shapes.extraSmall,
+        )
     }
 }
 
@@ -510,20 +589,57 @@ private fun ChatInputBar(
     onAttach: () -> Unit,
     onRemoveAttachment: (Attachment) -> Unit,
 ) {
-    Surface(tonalElevation = 3.dp) {
-        Column(
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val fieldShape = RoundedCornerShape(22.dp)
+    val border by animateColorAsState(
+        targetValue = when {
+            focused -> palette.silver.copy(alpha = 0.55f)
+            else -> palette.hairline
+        },
+        animationSpec = if (reduced) snap() else tween(MotionTokens.Durations.MICRO),
+        label = "inputBorder",
+    )
+
+    var completionTick by remember { mutableIntStateOf(0) }
+    var wasGenerating by remember { mutableStateOf(state.generating) }
+    LaunchedEffect(state.generating) {
+        if (wasGenerating && !state.generating) completionTick++
+        wasGenerating = state.generating
+    }
+    val canSend = state.modelLoaded &&
+        (state.input.isNotBlank() || state.pendingAttachments.isNotEmpty())
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(palette.surface)
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        Box(
             Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-        ) {
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            palette.hairline.copy(alpha = 0f),
+                            palette.hairlineStrong,
+                            palette.hairline.copy(alpha = 0f),
+                        ),
+                    ),
+                ),
+        )
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (state.pendingAttachments.isNotEmpty()) {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 7.dp),
+                        .padding(bottom = 8.dp, start = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     for (attachment in state.pendingAttachments) {
@@ -534,84 +650,168 @@ private fun ChatInputBar(
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                if (state.modelLoaded && (state.supportsVision || state.supportsAudio)) {
-                    IconButton(
-                        onClick = onAttach,
-                        enabled = !state.generating,
-                        modifier = Modifier.size(44.dp),
-                    ) {
-                        Icon(
-                            AppIcons.Attach,
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .clip(fieldShape)
+                        .background(palette.card)
+                        .border(1.dp, border, fieldShape)
+                        .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    if (state.modelLoaded && (state.supportsVision || state.supportsAudio)) {
+                        ObsidianIconButton(
+                            icon = AppIcons.Attach,
                             contentDescription = "Прикрепить изображение или аудио",
+                            onClick = onAttach,
+                            enabled = !state.generating,
+                            tint = palette.textSecondary,
+                            size = 38.dp,
+                            iconSize = 19.dp,
+                            shape = CircleShape,
                         )
                     }
-                }
-                OutlinedTextField(
-                    value = state.input,
-                    onValueChange = onInput,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(if (state.modelLoaded) "Сообщение…" else "Сначала загрузите модель")
-                    },
-                    maxLines = 5,
-                    shape = MaterialTheme.shapes.large,
-                )
-                Spacer(Modifier.width(8.dp))
-                if (state.generating) {
-                    SpeedChip(live)
-                    Spacer(Modifier.width(6.dp))
-                }
-                val generating = state.generating
-                val reducedMotion = LocalReducedMotion.current
-                val buttonColor by animateColorAsState(
-                    targetValue = if (generating) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    animationSpec = tween(MotionTokens.Durations.MICRO),
-                    label = "sendButtonColor",
-                )
-                FilledIconButton(
-                    onClick = { if (generating) onStop() else onSend() },
-                    enabled = generating || (
-                        state.modelLoaded &&
-                            (state.input.isNotBlank() || state.pendingAttachments.isNotEmpty())
+                    BasicTextField(
+                        value = state.input,
+                        onValueChange = onInput,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(
+                                start = if (state.supportsVision || state.supportsAudio) 2.dp else 10.dp,
+                                end = 8.dp,
+                                top = 10.dp,
+                                bottom = 10.dp,
+                            ),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = palette.textPrimary,
                         ),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = buttonColor,
-                    ),
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    AnimatedContent(
-                        targetState = generating,
-                        transitionSpec = {
-                            if (reducedMotion) {
-                                fadeIn(tween(MotionTokens.Durations.FADE_REDUCED)) togetherWith
-                                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
-                            } else {
-                                (
-                                    fadeIn(tween(MotionTokens.Durations.MICRO)) +
-                                        scaleIn(
-                                            initialScale = 0.45f,
-                                            animationSpec = MotionTokens.Springs.Press,
-                                        )
-                                    ) togetherWith (
-                                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED)) +
-                                        scaleOut(targetScale = 0.45f)
+                        maxLines = 5,
+                        cursorBrush = SolidColor(palette.silver),
+                        interactionSource = interaction,
+                        decorationBox = { inner ->
+                            Box {
+                                if (state.input.isEmpty()) {
+                                    Text(
+                                        text = if (state.modelLoaded) {
+                                            "Сообщение…"
+                                        } else {
+                                            "Сначала загрузите модель"
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = palette.textMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
+                                }
+                                inner()
                             }
                         },
-                        label = "sendStopMorph",
-                    ) { isGenerating ->
-                        Icon(
-                            if (isGenerating) AppIcons.Stop else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = if (isGenerating) "Остановить" else "Отправить",
-                        )
-                    }
+                    )
                 }
+                if (state.generating) {
+                    Spacer(Modifier.width(8.dp))
+                    SpeedChip(live)
+                }
+                Spacer(Modifier.width(8.dp))
+                SendStopButton(
+                    generating = state.generating,
+                    enabled = canSend,
+                    completionTick = completionTick,
+                    onSend = onSend,
+                    onStop = onStop,
+                )
             }
         }
+    }
+}
+
+/**
+ * Fluid morph between send and stop: the silver disc settles into a dark
+ * rounded square as generation starts, and a single silver pulse confirms the
+ * end of the answer.
+ */
+@Composable
+private fun SendStopButton(
+    generating: Boolean,
+    enabled: Boolean,
+    completionTick: Int,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
+    val spec = if (reduced) snap<Dp>() else tween<Dp>(MotionTokens.Durations.SHORT)
+    val radius by animateDpAsState(
+        targetValue = if (generating) 15.dp else 24.dp,
+        animationSpec = spec,
+        label = "sendStopRadius",
+    )
+    val background by animateColorAsState(
+        targetValue = when {
+            generating -> palette.nested
+            enabled -> palette.silver
+            else -> palette.elevated
+        },
+        animationSpec = tween(MotionTokens.Durations.MICRO),
+        label = "sendStopBackground",
+    )
+    val foreground = when {
+        generating -> palette.error
+        palette.isDark -> Color(0xFF111214)
+        else -> Color(0xFFF7F7F9)
+    }
+    val interactive = generating || enabled
+    val shape = RoundedCornerShape(radius)
+    Box(
+        Modifier
+            .size(48.dp)
+            .graphicsLayer { alpha = if (interactive) 1f else 0.4f }
+            .clip(shape)
+            .background(background)
+            .border(
+                1.dp,
+                if (generating) palette.hairlineStrong else Color.Transparent,
+                shape,
+            )
+            .pressable(enabled = interactive) {
+                if (generating) onStop() else onSend()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = generating,
+            transitionSpec = {
+                if (reduced) {
+                    fadeIn(tween(MotionTokens.Durations.FADE_REDUCED)) togetherWith
+                        fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
+                } else {
+                    (
+                        fadeIn(tween(MotionTokens.Durations.MICRO)) +
+                            scaleIn(
+                                initialScale = 0.45f,
+                                animationSpec = MotionTokens.Springs.Press,
+                            )
+                        ) togetherWith (
+                        fadeOut(tween(MotionTokens.Durations.FADE_REDUCED)) +
+                            scaleOut(targetScale = 0.45f)
+                        )
+                }
+            },
+            label = "sendStopMorph",
+        ) { isGenerating ->
+            Icon(
+                imageVector = if (isGenerating) AppIcons.Stop else Icons.AutoMirrored.Filled.Send,
+                contentDescription = if (isGenerating) "Остановить" else "Отправить",
+                tint = foreground,
+                modifier = Modifier.size(if (isGenerating) 17.dp else 21.dp),
+            )
+        }
+        SilverPulseOverlay(
+            trigger = completionTick,
+            color = palette.silver,
+            modifier = Modifier.matchParentSize(),
+            maxScale = 1.5f,
+        )
     }
 }
 
@@ -619,21 +819,23 @@ private fun ChatInputBar(
 @Composable
 private fun SpeedChip(live: StreamingAnswer) {
     // Read here, not in ChatInputBar: a speed tick must not recompose the bar.
+    val palette = ObsidianTheme.palette
     val tokensPerSecond = live.speed
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = PillShape,
+    Row(
+        Modifier
+            .clip(PillShape)
+            .background(palette.nested)
+            .border(1.dp, palette.hairline, PillShape)
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AnimatedNumber(
-                value = (tokensPerSecond * 10f).roundToInt(),
-                style = MaterialTheme.typography.labelSmall,
-                format = { String.format(Locale.ROOT, "%.1f t/s", it / 10f) },
-            )
-        }
+        StateDot(color = palette.silver, size = 4.dp, pulse = true)
+        Spacer(Modifier.width(6.dp))
+        AnimatedNumber(
+            value = tokensPerSecond,
+            style = MonoNumeric.copy(fontSize = 11.sp, color = palette.silver),
+            format = { String.format(Locale.ROOT, "%.1f t/s", it) },
+        )
     }
 }
 

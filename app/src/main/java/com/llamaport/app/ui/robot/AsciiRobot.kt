@@ -7,7 +7,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
+import com.llamaport.app.ui.theme.ObsidianTheme
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -175,10 +175,10 @@ fun AsciiRobot(
     }
 
     // --- colors -----------------------------------------------------------
-    val scheme = MaterialTheme.colorScheme
+    val palette = ObsidianTheme.palette
     val bodyTarget = when (state) {
-        RobotState.Sleeping -> scheme.onSurfaceVariant
-        else -> scheme.primary
+        RobotState.Sleeping -> palette.textSecondary
+        else -> palette.silver
     }
     val bodyColor by animateColorAsState(
         targetValue = bodyTarget,
@@ -260,10 +260,10 @@ fun AsciiRobot(
                 pulse = pulse,
                 blinkNow = frame <= blinkEndAt,
                 bodyColor = bodyColor,
-                background = scheme.surface,
-                accentColor = scheme.tertiary,
-                errorColor = scheme.error,
-                dimColor = scheme.onSurfaceVariant,
+                background = palette.surface,
+                accentColor = palette.silver,
+                errorColor = palette.error,
+                dimColor = palette.textSecondary,
                 glyphs = glyphs,
                 silhouette = silhouette,
             )
