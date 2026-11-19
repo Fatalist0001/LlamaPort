@@ -1,0 +1,38 @@
+[
+  {
+    "scenario": "F_real_1",
+    "first_token": true,
+    "completed": true,
+    "frames": 5072,
+    "temp": 34.8
+  },
+  {
+    "scenario": "F_fake10_1",
+    "frames": 3664,
+    "temp": 35.1
+  },
+  {
+    "scenario": "F_fake25_1",
+    "frames": 3692,
+    "temp": 35.4
+  },
+  {
+    "scenario": "T1_tool_1",
+    "frames": 203,
+    "header": [
+      203,
+      384
+    ],
+    "temp": 35.3
+  },
+  {
+    "scenario": "T4_tool_scroll_1",
+    "frames": 357,
+    "temp": 35.2
+  },
+  {
+    "scenario": "T4_tool_scroll_2",
+    "frames": 358,
+    "temp": 35.1
+  }
+]

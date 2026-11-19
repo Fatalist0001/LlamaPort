@@ -1,0 +1,47 @@
+[
+  {
+    "scenario": "P1_fake10",
+    "rep": 1,
+    "temp": 35.8
+  },
+  {
+    "scenario": "P1_fake10",
+    "rep": 2,
+    "temp": 36.0
+  },
+  {
+    "scenario": "P1_fake10",
+    "rep": 3,
+    "temp": 36.0
+  },
+  {
+    "scenario": "P1_fake25",
+    "rep": 1,
+    "temp": 35.9
+  },
+  {
+    "scenario": "P1_fake25",
+    "rep": 2,
+    "temp": 36.1
+  },
+  {
+    "scenario": "P1_fake25",
+    "rep": 3,
+    "temp": 36.3
+  },
+  {
+    "scenario": "P1_real",
+    "rep": 1,
+    "temp": 36.9
+  },
+  {
+    "scenario": "P1_real",
+    "rep": 2,
+    "temp": 37.5
+  },
+  {
+    "scenario": "P1_real",
+    "rep": 3,
+    "temp": 38.0
+  }
+]

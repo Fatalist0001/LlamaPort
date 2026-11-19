@@ -1,0 +1,8 @@
+# Raw captures and traces are large (~1 GB); regenerate them with the scripts.
+raw/
+raw_*/
+traces/
+traces_*/
+__pycache__/
+*.pftrace
+*.png

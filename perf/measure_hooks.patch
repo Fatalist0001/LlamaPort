@@ -1,0 +1,488 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index aa70718..6aeba9b 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -14,6 +14,8 @@
+         android:supportsRtl="true"
+         android:theme="@style/Theme.LlamaPort">
+ 
++        <profileable android:shell="true" />
++
+         <activity
+             android:name=".MainActivity"
+             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+diff --git a/app/src/main/java/com/llamaport/app/ChatViewModel.kt b/app/src/main/java/com/llamaport/app/ChatViewModel.kt
+index e1d59cd..9f8ee62 100644
+--- a/app/src/main/java/com/llamaport/app/ChatViewModel.kt
++++ b/app/src/main/java/com/llamaport/app/ChatViewModel.kt
+@@ -8,6 +8,7 @@ import android.content.Intent
+ import android.content.ServiceConnection
+ import android.net.Uri
+ import android.os.IBinder
++import android.os.SystemClock
+ import android.provider.OpenableColumns
+ import android.util.Log
+ import androidx.lifecycle.AndroidViewModel
+@@ -20,6 +21,7 @@ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.flow.first
+ import kotlinx.coroutines.flow.update
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
+@@ -1511,6 +1513,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
+                 if (seq != generationSeq) return
+                 val text = String(chunk, Charsets.UTF_8)
+                 if (text.isEmpty()) return
++                if (buffer.isEmpty()) Log.i("Measure", "real_first_token")
+                 val streaming = _state.value.messages.any { it.id == assistant.id && it.streaming }
+                 if (!streaming) return
+                 buffer.append(text)
+@@ -1899,6 +1902,272 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
+         return PromptBundle(sb.toString().toByteArray(Charsets.UTF_8), ByteArray(0), mediaPaths)
+     }
+ 
++
++    // ------------------------------------------------------- measurement hooks
++
++    fun onMeasureIntent() {
++        if (!MeasureConfig.enabled) return
++        viewModelScope.launch {
++            _state.first { it.sessionsLoaded }
++            when {
++                MeasureConfig.seedLongChat -> {
++                    seedMeasureLongChat()
++                    if (MeasureConfig.fakeRate > 0) {
++                        updateMessages { it + ChatMessage(role = "user", text = MeasureConfig.prompt) }
++                        delay(1200)
++                        runFakeStream(MeasureConfig.fakeRate)
++                    }
++                }
++                MeasureConfig.thinkingChat -> seedMeasureThinkingChat()
++                MeasureConfig.emptyChat -> prepareMeasureChat("measure-empty", "Measure idle")
++                MeasureConfig.realRun -> startMeasureReal()
++                MeasureConfig.fakeRate > 0 -> {
++                    prepareMeasureChat("measure-fake", "Measure fake")
++                    delay(400)
++                    runFakeStream(MeasureConfig.fakeRate)
++                }
++            }
++        }
++    }
++
++    private fun installMeasureSession(id: String, title: String, messages: List<ChatMessage>) {
++        val now = System.currentTimeMillis()
++        val summary = SessionSummary(
++            id = id,
++            title = title,
++            createdAt = now,
++            updatedAt = now,
++            messageCount = messages.count { it.role == "user" || it.role == "assistant" },
++            preview = previewOf(messages),
++            modelName = _state.value.modelName.orEmpty(),
++        )
++        sessionMessages[id] = messages
++        _state.update {
++            it.copy(
++                sessions = listOf(summary) + it.sessions.filter { s -> s.id != id },
++                activeSessionId = id,
++                activeSessionTitle = title,
++                messages = messages,
++                input = "",
++                generating = false,
++                progress = null,
++                error = null,
++                pendingAttachments = emptyList(),
++                scrollRequest = it.scrollRequest + 1,
++            )
++        }
++        scheduleSave()
++    }
++
++    private fun prepareMeasureChat(id: String, title: String) {
++        installMeasureSession(id, title, emptyList())
++    }
++
++    private fun seedMeasureLongChat() {
++        val base = System.nanoTime()
++        val messages = ArrayList<ChatMessage>(60)
++        for (i in 1..30) {
++            messages += ChatMessage(
++                id = base + i * 2,
++                role = "user",
++                text = "Вопрос $i: объясни шаг $i и приведи короткий пример.",
++            )
++            val thinking = if (i % 3 == 0) {
++                "<" + "think" + ">\nНужно проверить формулировку, выбрать пример и оценить сложность.\n" +
++                    "Шаг 1: разобрать условие.\nШаг 2: собрать пример.\nШаг 3: записать вывод.\n" +
++                    "</" + "think" + ">\n\n"
++            } else {
++                ""
++            }
++            val code = if (i % 4 == 0) {
++                "\n\n```kotlin\nfun demo$i(value: Int): Int {\n    val scaled = value * $i\n    return scaled + 1\n}\n```"
++            } else {
++                ""
++            }
++            val answer = thinking +
++                "## Ответ $i\n\n" +
++                "Это тестовый ответ с **Markdown**, *курсивом* и `inline code`. " +
++                "Он достаточно длинный, чтобы строка переносилась и список занимал несколько строк.\n\n" +
++                "1. Первый пункт ответа $i.\n2. Второй пункт с пояснением.\n3. Третий пункт для высоты сообщения." +
++                code
++            messages += ChatMessage(
++                id = base + i * 2 + 1,
++                role = "assistant",
++                text = answer,
++                metrics = MessageMetrics(
++                    promptTokens = 120 + i,
++                    promptTokensPerSecond = 20f,
++                    generatedTokens = 80 + i,
++                    generationTokensPerSecond = 12f,
++                    durationMs = 7_000L + i,
++                ),
++            )
++        }
++        installMeasureSession("measure-long", "Perf long chat", messages)
++    }
++
++    private fun seedMeasureThinkingChat() {
++        val thinking = buildString {
++            append("<" + "think" + ">")
++            append("\n")
++            for (i in 1..45) {
++                append("Шаг $i: проверяем гипотезу, сравниваем варианты и уточняем вывод. ")
++                if (i % 5 == 0) append("\n\n")
++            }
++            append("\n")
++            append("</" + "think" + ">")
++            append("\n\n")
++            append("## Итог\n\n")
++            append("Длинный блок размышлений нужен, чтобы измерить раскрытие и сворачивание. ")
++            append("**Ответ** остаётся видимым, а thinking можно открыть и закрыть десять раз.")
++        }
++        val now = System.nanoTime()
++        installMeasureSession(
++            "measure-thinking",
++            "Perf thinking",
++            listOf(
++                ChatMessage(id = now, role = "user", text = "Покажи длинное рассуждение."),
++                ChatMessage(
++                    id = now + 1,
++                    role = "assistant",
++                    text = thinking,
++                    metrics = MessageMetrics(
++                        promptTokens = 40,
++                        promptTokensPerSecond = 20f,
++                        generatedTokens = 220,
++                        generationTokensPerSecond = 10f,
++                        durationMs = 22_000L,
++                    ),
++                ),
++            ),
++        )
++    }
++
++    private suspend fun startMeasureReal() {
++        val file = File(modelsDir, "LFM3-1.7B-GSQ-1GB-IQ4_XS_RCO.gguf")
++        if (!file.isFile) {
++            Log.e(TAG, "measure: fixed model is missing")
++            return
++        }
++        if (!_state.value.modelLoaded || _state.value.modelName != file.name) {
++            loadModel(file)
++            val ready = withTimeoutOrNull(180_000) {
++                _state.first { it.modelLoaded && it.modelName == file.name }
++            }
++            if (ready == null) {
++                Log.e(TAG, "measure: fixed model load timed out")
++                return
++            }
++        }
++        updateSettings {
++            it.copy(
++                temperature = 0f,
++                maxTokens = 256,
++                topP = 0.95f,
++                topK = 40,
++                thinkingBudget = 0,
++                toolsEnabled = false,
++            )
++        }
++        prepareMeasureChat("measure-real", "Measure real")
++        _state.update { it.copy(input = MeasureConfig.prompt) }
++        delay(500)
++        Log.i("Measure", "real_send")
++        send()
++    }
++
++    private suspend fun runFakeStream(rate: Int) {
++        val seconds = 30
++        val total = if (MeasureConfig.fakeTokens > 0) MeasureConfig.fakeTokens else rate * seconds
++        val chunks = fakeChunks(total)
++        if (chunks.isEmpty()) return
++
++        val assistant = ChatMessage(role = "assistant", text = "", streaming = true)
++        updateMessages { it + assistant }
++        _state.update {
++            it.copy(
++                input = "",
++                generating = true,
++                error = null,
++                progress = null,
++                scrollRequest = it.scrollRequest + 1,
++            )
++        }
++
++        val full = StringBuilder()
++        val pending = StringBuilder()
++        var tokens = 0
++        var lastPublish = 0L
++        val startedAt = System.nanoTime()
++        Log.i("Measure", "fake_start rate=$rate total=$total publish_hz=${MeasureConfig.publishHz}")
++
++        for ((index, chunk) in chunks.withIndex()) {
++            if (cancelRequested) break
++            delay(1000L / rate)
++            full.append(chunk)
++            pending.append(chunk)
++            tokens++
++            val now = SystemClock.elapsedRealtime()
++            val interval = if (MeasureConfig.publishHz > 0) 1000L / MeasureConfig.publishHz else 0L
++            val due = interval == 0L || now - lastPublish >= interval || index == chunks.lastIndex
++            if (due) {
++                appendToMessage(assistant.id, pending.toString())
++                pending.clear()
++                lastPublish = now
++                updateMessageMetrics(assistant.id) {
++                    it.copy(
++                        promptTokens = 120,
++                        promptTokensPerSecond = 20f,
++                        generatedTokens = tokens,
++                        generationTokensPerSecond = rate.toFloat(),
++                        durationMs = (System.nanoTime() - startedAt) / 1_000_000L,
++                    )
++                }
++            }
++        }
++        if (pending.isNotEmpty()) {
++            appendToMessage(assistant.id, pending.toString())
++        }
++        finishAssistant(
++            assistant.id,
++            full.toString(),
++            tokens,
++            null,
++            false,
++            20f,
++            120,
++            rate.toFloat(),
++            startedAt,
++        )
++        _state.update { it.copy(generating = false, progress = null) }
++        Log.i("Measure", "fake_end tokens=$tokens")
++    }
++
++    private fun fakeChunks(total: Int): List<String> {
++        val text = StringBuilder()
++        text.append("<" + "think" + ">")
++        text.append("\n")
++        for (i in 1..12) {
++            text.append("Шаг $i: проверяем план ответа, структуру примера и вывод.\n")
++        }
++        text.append("\n")
++        text.append("</" + "think" + ">")
++        text.append("\n\n")
++        var section = 0
++        while (tokenEstimate(text) < total) {
++            section++
++            text.append("## Раздел $section\n\n")
++            text.append("Это демонстрационный ответ для замера UI. **Жирный текст**, *курсив* и `inline code` проверяют разметку.\n\n")
++            text.append("```kotlin\nfun step$section(value: Int): Int {\n    val scaled = value * $section\n    return scaled + 1\n}\n```\n\n")
++            text.append("1. Первый пункт раздела $section.\n2. Второй пункт с [ссылкой](https://example.com).\n3. Третий пункт, чтобы текст занимал несколько строк и переносился.\n\n")
++        }
++        val words = Regex("\\S+\\s*").findAll(text.toString()).map { it.value }.toList()
++        if (words.size <= total) return words
++        return words.subList(0, total)
++    }
++
++    private fun tokenEstimate(text: CharSequence): Int = text.count { it == ' ' } + 1
++
+     override fun onCleared() {
+         super.onCleared()
+         saveJob?.cancel()
+diff --git a/app/src/main/java/com/llamaport/app/HomeChrome.kt b/app/src/main/java/com/llamaport/app/HomeChrome.kt
+index fb2d58b..940a04d 100644
+--- a/app/src/main/java/com/llamaport/app/HomeChrome.kt
++++ b/app/src/main/java/com/llamaport/app/HomeChrome.kt
+@@ -118,7 +118,7 @@ internal fun ModelChip(
+             // The infinite transition only exists while the dot actually
+             // pulses; at rest (and with reduced motion) nothing subscribes to
+             // the frame clock.
+-            if (!reduced && (state.loadingModel || state.generating || state.serviceDead)) {
++            if (!reduced && !MeasureConfig.noLogoAnimation && (state.loadingModel || state.generating || state.serviceDead)) {
+                 val pulseT by rememberInfiniteTransition(label = "modelDotPulse").animateFloat(
+                     initialValue = 0.35f,
+                     targetValue = 1f,
+@@ -440,6 +440,7 @@ internal fun HomeEmptyState(
+                 state = robotStateFor(state),
+                 size = 168.dp,
+                 progress = loadingProgress,
++                active = !MeasureConfig.noLogoAnimation,
+                 onTap = {},
+                 onLongPress = { showRobotDemo = true },
+             )
+diff --git a/app/src/main/java/com/llamaport/app/MainActivity.kt b/app/src/main/java/com/llamaport/app/MainActivity.kt
+index 2d910a0..7ba9e48 100644
+--- a/app/src/main/java/com/llamaport/app/MainActivity.kt
++++ b/app/src/main/java/com/llamaport/app/MainActivity.kt
+@@ -1,6 +1,7 @@
+ package com.llamaport.app
+ 
+ import android.Manifest
++import android.content.Intent
+ import android.content.pm.PackageManager
+ import android.os.Build
+ import android.os.Bundle
+@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
+     override fun onCreate(savedInstanceState: Bundle?) {
+         enableEdgeToEdge()
+         super.onCreate(savedInstanceState)
++        MeasureConfig.fromIntent(intent)
+         if (Build.VERSION.SDK_INT >= 33 &&
+             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+             PackageManager.PERMISSION_GRANTED
+@@ -36,5 +38,16 @@ class MainActivity : ComponentActivity() {
+                 }
+             }
+         }
++        if (MeasureConfig.enabled) {
++            viewModel.onMeasureIntent()
++        }
++    }
++
++    override fun onNewIntent(intent: Intent) {
++        super.onNewIntent(intent)
++        MeasureConfig.fromIntent(intent)
++        if (MeasureConfig.enabled) {
++            viewModel.onMeasureIntent()
++        }
+     }
+ }
+diff --git a/app/src/main/java/com/llamaport/app/Markdown.kt b/app/src/main/java/com/llamaport/app/Markdown.kt
+index 4c2fde8..58294bb 100644
+--- a/app/src/main/java/com/llamaport/app/Markdown.kt
++++ b/app/src/main/java/com/llamaport/app/Markdown.kt
+@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextDecoration
+ import androidx.compose.ui.text.withStyle
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
++import com.llamaport.app.MeasureConfig
+ import com.llamaport.app.ui.motion.LocalReducedMotion
+ import com.llamaport.app.ui.motion.MotionTokens
+ 
+@@ -178,9 +179,9 @@ private fun StreamBlock(streaming: Boolean, content: @Composable () -> Unit) {
+         return
+     }
+     val reduced = LocalReducedMotion.current
+-    val alpha = remember { Animatable(if (reduced) 1f else 0f) }
++    val alpha = remember { Animatable(if (reduced || MeasureConfig.noLogoAnimation) 1f else 0f) }
+     LaunchedEffect(Unit) {
+-        if (!reduced) {
++        if (!reduced && !MeasureConfig.noLogoAnimation) {
+             alpha.animateTo(
+                 targetValue = 1f,
+                 animationSpec = tween(
+@@ -199,7 +200,7 @@ private fun StreamBlock(streaming: Boolean, content: @Composable () -> Unit) {
+ @Composable
+ private fun StreamingCursorMark() {
+     val reduced = LocalReducedMotion.current
+-    val alpha = if (reduced) {
++    val alpha = if (reduced || MeasureConfig.noLogoAnimation) {
+         null
+     } else {
+         rememberInfiniteTransition(label = "mdCursor").animateFloat(
+diff --git a/app/src/main/java/com/llamaport/app/ui/chat/Messages.kt b/app/src/main/java/com/llamaport/app/ui/chat/Messages.kt
+index 64b8d6d..d0e9edb 100644
+--- a/app/src/main/java/com/llamaport/app/ui/chat/Messages.kt
++++ b/app/src/main/java/com/llamaport/app/ui/chat/Messages.kt
+@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.sp
+ import com.llamaport.app.Attachment
+ import com.llamaport.app.ChatMessage
+ import com.llamaport.app.MarkdownText
++import com.llamaport.app.MeasureConfig
+ import com.llamaport.app.MessageMetrics
+ import com.llamaport.app.ThinkingParts
+ import com.llamaport.app.UiState
+@@ -362,10 +363,14 @@ private fun AssistantMessage(message: ChatMessage, parts: ThinkingParts) {
+                         if (parts.answer.isNotEmpty()) Spacer(Modifier.height(8.dp))
+                     }
+                     if (parts.answer.isNotEmpty()) {
+-                        MarkdownText(
+-                            text = parts.answer,
+-                            streaming = message.streaming,
+-                        )
++                        if (MeasureConfig.plainText) {
++                            Text(parts.answer, style = MaterialTheme.typography.bodyMedium)
++                        } else {
++                            MarkdownText(
++                                text = parts.answer,
++                                streaming = message.streaming,
++                            )
++                        }
+                     } else if (message.streaming && parts.thinking == null) {
+                         StreamingCursor()
+                     }
+@@ -527,7 +532,7 @@ private fun MessageActionsMenu(
+ @Composable
+ private fun StreamingCursor() {
+     val reduced = LocalReducedMotion.current
+-    val alpha = if (reduced) {
++    val alpha = if (reduced || MeasureConfig.noLogoAnimation) {
+         null
+     } else {
+         rememberInfiniteTransition(label = "cursor").animateFloat(
+@@ -718,7 +723,11 @@ private fun ThinkingBlock(thinking: String, streaming: Boolean) {
+             ) {
+                 Column {
+                     Spacer(Modifier.height(7.dp))
+-                    MarkdownText(thinking, streaming = streaming)
++                    if (MeasureConfig.plainText) {
++                        Text(thinking, style = MaterialTheme.typography.bodyMedium)
++                    } else {
++                        MarkdownText(thinking, streaming = streaming)
++                    }
+                 }
+             }
+         }
+@@ -729,7 +738,7 @@ private fun ThinkingBlock(thinking: String, streaming: Boolean) {
+ @Composable
+ private fun ThinkingDots() {
+     val reduced = LocalReducedMotion.current
+-    if (reduced) {
++    if (reduced || MeasureConfig.noLogoAnimation) {
+         Text(
+             "…",
+             style = MaterialTheme.typography.labelSmall,
+diff --git a/app/src/main/java/com/llamaport/app/ui/robot/RobotAvatar.kt b/app/src/main/java/com/llamaport/app/ui/robot/RobotAvatar.kt
+index ebcb115..b8f2481 100644
+--- a/app/src/main/java/com/llamaport/app/ui/robot/RobotAvatar.kt
++++ b/app/src/main/java/com/llamaport/app/ui/robot/RobotAvatar.kt
+@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.IntOffset
+ import androidx.compose.ui.unit.IntSize
+ import androidx.compose.ui.unit.dp
+ import com.llamaport.app.ui.AppIcons
++import com.llamaport.app.MeasureConfig
+ import com.llamaport.app.ui.motion.LocalReducedMotion
+ 
+ /** Rasterized logo grid, computed once and shared by all avatars. */
+@@ -83,7 +84,7 @@ fun RobotAvatar(
+ ) {
+     val mask = rememberRobotMask()
+     val reduced = LocalReducedMotion.current
+-    val pulse = if (thinking && !reduced) {
++    val pulse = if (thinking && !reduced && !MeasureConfig.noLogoAnimation) {
+         val infinite = rememberInfiniteTransition(label = "robotAvatar")
+         val value by infinite.animateFloat(
+             initialValue = 0.4f,

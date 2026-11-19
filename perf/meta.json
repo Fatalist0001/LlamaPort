@@ -1,0 +1,45 @@
+[
+  {
+    "scenario": "S1_cold",
+    "rep": 1,
+    "temp": 34.7
+  },
+  {
+    "scenario": "S1_cold",
+    "rep": 2,
+    "temp": 34.7
+  },
+  {
+    "scenario": "S1_cold",
+    "rep": 3,
+    "temp": 35.0
+  },
+  {
+    "scenario": "S1_cold",
+    "rep": 4,
+    "temp": 35.0
+  },
+  {
+    "scenario": "S1_cold",
+    "rep": 5,
+    "temp": 35.0
+  },
+  {
+    "scenario": "S2_idle",
+    "rep": 1,
+    "temp": 35.1
+  },
+  {
+    "scenario": "S3",
+    "error": "tuple index out of range"
+  },
+  {
+    "scenario": "S4_fake25",
+    "rep": 1,
+    "temp": 35.2
+  },
+  {
+    "scenario": "S5",
+    "error": "tuple index out of range"
+  }
+]

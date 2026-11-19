@@ -1,0 +1,46 @@
+[
+  {
+    "name": "T1_tool_1",
+    "header": [
+      203,
+      507
+    ],
+    "expanded_result": {
+      "chars": 100000,
+      "bounds": [
+        57,
+        681,
+        1023,
+        2174
+      ],
+      "height": 1493
+    },
+    "temp": 36.3
+  },
+  {
+    "name": "T1_tool_2",
+    "header": [
+      203,
+      507
+    ],
+    "expanded_result": {
+      "chars": 100000,
+      "bounds": [
+        57,
+        681,
+        1023,
+        2174
+      ],
+      "height": 1493
+    },
+    "temp": 36.2
+  },
+  {
+    "name": "T2_round_1",
+    "temp": 36.2
+  },
+  {
+    "name": "T2_round_2",
+    "temp": 36.5
+  }
+]

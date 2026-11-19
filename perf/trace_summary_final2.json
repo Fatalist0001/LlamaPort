@@ -1,0 +1,2583 @@
+{
+  "F_real_1": {
+    "pid": "32366",
+    "upid": "1",
+    "main_tid": "32366",
+    "main_utid": "1",
+    "main_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "animation",
+        "2554",
+        "3819.116624",
+        "14.500625"
+      ],
+      [
+        "traversal",
+        "1392",
+        "3497.578075",
+        "19.462136"
+      ],
+      [
+        "draw",
+        "1392",
+        "3056.145641",
+        "19.163281"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "1393",
+        "2571.157295",
+        "13.962552"
+      ],
+      [
+        "postAndWait",
+        "1393",
+        "2535.171366",
+        "13.936510"
+      ],
+      [
+        "Recomposer:recompose",
+        "1392",
+        "1934.571246",
+        "11.929323"
+      ],
+      [
+        "Recomposer:animation",
+        "1393",
+        "1447.400272",
+        "7.354167"
+      ],
+      [
+        "Compose:recompose",
+        "1495",
+        "807.576540",
+        "7.745938"
+      ],
+      [
+        "Record View#draw()",
+        "1392",
+        "380.370517",
+        "17.945469"
+      ],
+      [
+        "Compose:applyChanges",
+        "1493",
+        "359.996222",
+        "3.309635"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "106",
+        "283.497761",
+        "14.522500"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "1392",
+        "247.353321",
+        "1.728229"
+      ],
+      [
+        "TextLayout:initLayout",
+        "176",
+        "50.332808",
+        "1.830208"
+      ],
+      [
+        "Choreographer#doFrame 616037297",
+        "1",
+        "24.347500",
+        "24.347500"
+      ],
+      [
+        "Compose:sideeffects",
+        "1444",
+        "21.588239",
+        "2.132135"
+      ],
+      [
+        "Choreographer#doFrame 616032734",
+        "1",
+        "19.802552",
+        "19.802552"
+      ],
+      [
+        "Choreographer#doFrame 616035696",
+        "1",
+        "18.534843",
+        "18.534843"
+      ],
+      [
+        "Choreographer#doFrame 616035450",
+        "1",
+        "17.989844",
+        "17.989844"
+      ],
+      [
+        "Choreographer#doFrame 616035881",
+        "1",
+        "17.557604",
+        "17.557604"
+      ],
+      [
+        "Choreographer#doFrame 616044416",
+        "1",
+        "17.097969",
+        "17.097969"
+      ],
+      [
+        "Choreographer#doFrame 616033552",
+        "1",
+        "16.996719",
+        "16.996719"
+      ],
+      [
+        "Choreographer#doFrame 616036914",
+        "1",
+        "16.914791",
+        "16.914791"
+      ],
+      [
+        "Choreographer#doFrame 616038483",
+        "1",
+        "16.536562",
+        "16.536562"
+      ],
+      [
+        "Choreographer#doFrame 616038687",
+        "1",
+        "16.323125",
+        "16.323125"
+      ],
+      [
+        "Choreographer#doFrame 616037264",
+        "1",
+        "15.093073",
+        "15.093073"
+      ],
+      [
+        "Choreographer#doFrame 616041209",
+        "1",
+        "14.686823",
+        "14.686823"
+      ],
+      [
+        "Choreographer#doFrame 616035845",
+        "1",
+        "14.352864",
+        "14.352864"
+      ],
+      [
+        "Choreographer#doFrame 616032930",
+        "1",
+        "13.879896",
+        "13.879896"
+      ],
+      [
+        "Choreographer#doFrame 616044622",
+        "1",
+        "13.855364",
+        "13.855364"
+      ],
+      [
+        "Choreographer#doFrame 616033093",
+        "1",
+        "13.785573",
+        "13.785573"
+      ],
+      [
+        "Choreographer#doFrame 616032072",
+        "1",
+        "13.010729",
+        "13.010729"
+      ],
+      [
+        "Choreographer#doFrame 616044167",
+        "1",
+        "12.969219",
+        "12.969219"
+      ],
+      [
+        "Choreographer#doFrame 616035943",
+        "1",
+        "12.733281",
+        "12.733281"
+      ],
+      [
+        "Choreographer#doFrame 616036735",
+        "1",
+        "12.591614",
+        "12.591614"
+      ],
+      [
+        "Choreographer#doFrame 616035953",
+        "1",
+        "12.037448",
+        "12.037448"
+      ],
+      [
+        "Choreographer#doFrame 616038457",
+        "1",
+        "12.032500",
+        "12.032500"
+      ],
+      [
+        "Choreographer#doFrame 616044632",
+        "1",
+        "11.846146",
+        "11.846146"
+      ],
+      [
+        "Choreographer#doFrame 616038860",
+        "1",
+        "11.668230",
+        "11.668230"
+      ],
+      [
+        "Choreographer#doFrame 616033156",
+        "1",
+        "11.620938",
+        "11.620938"
+      ],
+      [
+        "Choreographer#doFrame 616038553",
+        "1",
+        "11.465365",
+        "11.465365"
+      ]
+    ],
+    "main_states": [
+      [
+        "state",
+        "n",
+        "ms"
+      ],
+      [
+        "Running",
+        "4650",
+        "6220.953098"
+      ],
+      [
+        "S",
+        "2723",
+        "5040.642325"
+      ],
+      [
+        "R",
+        "4326",
+        "527.236285"
+      ],
+      [
+        "R+",
+        "284",
+        "50.814844"
+      ],
+      [
+        "D",
+        "35",
+        "2.335265"
+      ]
+    ],
+    "main_cpu": [
+      [
+        "cpu",
+        "ms"
+      ],
+      [
+        "0",
+        "1068.865536"
+      ],
+      [
+        "1",
+        "977.907711"
+      ],
+      [
+        "2",
+        "858.530418"
+      ],
+      [
+        "3",
+        "944.540564"
+      ],
+      [
+        "4",
+        "885.946400"
+      ],
+      [
+        "5",
+        "659.000840"
+      ],
+      [
+        "6",
+        "449.407461"
+      ],
+      [
+        "7",
+        "376.754168"
+      ]
+    ],
+    "app_threads": [],
+    "app_cpu": [],
+    "llm_threads": [
+      [
+        "name",
+        "tid",
+        "cpu_ms"
+      ],
+      [
+        "binder:32404_4",
+        "32420",
+        "11358.289522"
+      ],
+      [
+        "binder:32404_4",
+        "32662",
+        "266.513804"
+      ],
+      [
+        "binder:32404_4",
+        "32685",
+        "245.966976"
+      ],
+      [
+        "binder:32404_4",
+        "32647",
+        "218.611984"
+      ],
+      [
+        "binder:32404_4",
+        "32626",
+        "215.144008"
+      ],
+      [
+        "binder:32404_4",
+        "32655",
+        "209.229116"
+      ],
+      [
+        "binder:32404_4",
+        "32682",
+        "207.808958"
+      ],
+      [
+        "binder:32404_4",
+        "32691",
+        "207.491460"
+      ],
+      [
+        "binder:32404_4",
+        "32690",
+        "204.522238"
+      ],
+      [
+        "binder:32404_4",
+        "32665",
+        "199.373855"
+      ],
+      [
+        "binder:32404_4",
+        "32695",
+        "197.489012"
+      ],
+      [
+        "binder:32404_4",
+        "32624",
+        "194.569377"
+      ],
+      [
+        "binder:32404_4",
+        "32678",
+        "193.228285"
+      ],
+      [
+        "binder:32404_4",
+        "32697",
+        "192.799796"
+      ],
+      [
+        "binder:32404_4",
+        "32644",
+        "191.394268"
+      ],
+      [
+        "binder:32404_4",
+        "32676",
+        "189.657133"
+      ],
+      [
+        "binder:32404_4",
+        "32660",
+        "188.080993"
+      ],
+      [
+        "binder:32404_4",
+        "32588",
+        "187.708543"
+      ],
+      [
+        "binder:32404_4",
+        "32645",
+        "186.963853"
+      ],
+      [
+        "binder:32404_4",
+        "32589",
+        "179.255310"
+      ],
+      [
+        "binder:32404_4",
+        "32684",
+        "176.643548"
+      ],
+      [
+        "binder:32404_4",
+        "32630",
+        "175.563853"
+      ],
+      [
+        "binder:32404_4",
+        "32596",
+        "173.275677"
+      ],
+      [
+        "binder:32404_4",
+        "32699",
+        "173.241772"
+      ],
+      [
+        "binder:32404_4",
+        "32715",
+        "169.754849"
+      ]
+    ],
+    "compose_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "1392",
+        "3497.578075",
+        "19.462136"
+      ],
+      [
+        "draw",
+        "1392",
+        "3056.145641",
+        "19.163281"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "1393",
+        "2571.157295",
+        "13.962552"
+      ],
+      [
+        "Recomposer:recompose",
+        "1392",
+        "1934.571246",
+        "11.929323"
+      ],
+      [
+        "Recomposer:animation",
+        "1393",
+        "1447.400272",
+        "7.354167"
+      ],
+      [
+        "Compose:recompose",
+        "1495",
+        "807.576540",
+        "7.745938"
+      ],
+      [
+        "Record View#draw()",
+        "1392",
+        "380.370517",
+        "17.945469"
+      ],
+      [
+        "Compose:applyChanges",
+        "1493",
+        "359.996222",
+        "3.309635"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "106",
+        "283.497761",
+        "14.522500"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "1392",
+        "247.353321",
+        "1.728229"
+      ],
+      [
+        "TextLayout:initLayout",
+        "176",
+        "50.332808",
+        "1.830208"
+      ],
+      [
+        "Choreographer#doFrame 616037297",
+        "1",
+        "24.347500",
+        "24.347500"
+      ],
+      [
+        "Compose:sideeffects",
+        "1444",
+        "21.588239",
+        "2.132135"
+      ],
+      [
+        "Choreographer#doFrame 616032734",
+        "1",
+        "19.802552",
+        "19.802552"
+      ],
+      [
+        "Choreographer#doFrame 616035696",
+        "1",
+        "18.534843",
+        "18.534843"
+      ],
+      [
+        "Choreographer#doFrame 616035450",
+        "1",
+        "17.989844",
+        "17.989844"
+      ],
+      [
+        "Choreographer#doFrame 616035881",
+        "1",
+        "17.557604",
+        "17.557604"
+      ],
+      [
+        "Choreographer#doFrame 616044416",
+        "1",
+        "17.097969",
+        "17.097969"
+      ],
+      [
+        "Choreographer#doFrame 616033552",
+        "1",
+        "16.996719",
+        "16.996719"
+      ],
+      [
+        "Choreographer#doFrame 616036914",
+        "1",
+        "16.914791",
+        "16.914791"
+      ],
+      [
+        "Choreographer#doFrame 616038483",
+        "1",
+        "16.536562",
+        "16.536562"
+      ],
+      [
+        "Choreographer#doFrame 616038687",
+        "1",
+        "16.323125",
+        "16.323125"
+      ],
+      [
+        "Choreographer#doFrame 616037264",
+        "1",
+        "15.093073",
+        "15.093073"
+      ],
+      [
+        "Choreographer#doFrame 616041209",
+        "1",
+        "14.686823",
+        "14.686823"
+      ],
+      [
+        "Choreographer#doFrame 616035845",
+        "1",
+        "14.352864",
+        "14.352864"
+      ],
+      [
+        "Choreographer#doFrame 616032930",
+        "1",
+        "13.879896",
+        "13.879896"
+      ],
+      [
+        "Choreographer#doFrame 616044622",
+        "1",
+        "13.855364",
+        "13.855364"
+      ],
+      [
+        "Choreographer#doFrame 616033093",
+        "1",
+        "13.785573",
+        "13.785573"
+      ],
+      [
+        "Choreographer#doFrame 616032072",
+        "1",
+        "13.010729",
+        "13.010729"
+      ],
+      [
+        "Choreographer#doFrame 616044167",
+        "1",
+        "12.969219",
+        "12.969219"
+      ],
+      [
+        "Choreographer#doFrame 616035943",
+        "1",
+        "12.733281",
+        "12.733281"
+      ],
+      [
+        "Choreographer#doFrame 616036735",
+        "1",
+        "12.591614",
+        "12.591614"
+      ],
+      [
+        "Choreographer#doFrame 616035953",
+        "1",
+        "12.037448",
+        "12.037448"
+      ],
+      [
+        "Choreographer#doFrame 616038457",
+        "1",
+        "12.032500",
+        "12.032500"
+      ],
+      [
+        "Choreographer#doFrame 616044632",
+        "1",
+        "11.846146",
+        "11.846146"
+      ],
+      [
+        "Choreographer#doFrame 616038860",
+        "1",
+        "11.668230",
+        "11.668230"
+      ],
+      [
+        "Choreographer#doFrame 616033156",
+        "1",
+        "11.620938",
+        "11.620938"
+      ],
+      [
+        "Choreographer#doFrame 616038553",
+        "1",
+        "11.465365",
+        "11.465365"
+      ],
+      [
+        "Choreographer#doFrame 616035781",
+        "1",
+        "11.429791",
+        "11.429791"
+      ],
+      [
+        "Choreographer#doFrame 616042368",
+        "1",
+        "11.312708",
+        "11.312708"
+      ]
+    ],
+    "frame_timeline": [
+      [
+        "jank_type",
+        "n"
+      ],
+      [
+        "Buffer Stuffing",
+        "1195"
+      ],
+      [
+        "None",
+        "152"
+      ],
+      [
+        "App Deadline Missed, Buffer Stuffing",
+        "20"
+      ],
+      [
+        "Buffer Stuffing, SurfaceFlinger Stuffing",
+        "19"
+      ],
+      [
+        "SurfaceFlinger Scheduling, App Deadline Missed, Buffer Stuffing",
+        "12"
+      ],
+      [
+        "SurfaceFlinger Scheduling, Buffer Stuffing",
+        "10"
+      ],
+      [
+        "App Deadline Missed",
+        "3"
+      ],
+      [
+        "SurfaceFlinger CPU Deadline Missed, Buffer Stuffing",
+        "1"
+      ]
+    ],
+    "gc_slices": [
+      [
+        "name",
+        "n",
+        "total_ms"
+      ],
+      [
+        "Lock contention on GC barrier lock (owner tid: 0)",
+        "1",
+        "0.004843"
+      ]
+    ]
+  },
+  "T1_tool_1": {
+    "pid": "3786",
+    "upid": "5",
+    "main_tid": "3786",
+    "main_utid": "29",
+    "main_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "78",
+        "166.557499",
+        "35.362761"
+      ],
+      [
+        "draw",
+        "78",
+        "158.062657",
+        "35.242656"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "78",
+        "83.275464",
+        "35.036927"
+      ],
+      [
+        "postAndWait",
+        "78",
+        "82.416142",
+        "35.027552"
+      ],
+      [
+        "Record View#draw()",
+        "78",
+        "70.500726",
+        "12.507657"
+      ],
+      [
+        "animation",
+        "139",
+        "63.646773",
+        "13.662604"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "67",
+        "49.530941",
+        "9.561407"
+      ],
+      [
+        "Choreographer#doFrame 616177596",
+        "1",
+        "35.755886",
+        "35.755886"
+      ],
+      [
+        "Recomposer:recompose",
+        "75",
+        "32.109585",
+        "13.370677"
+      ],
+      [
+        "Recomposer:animation",
+        "67",
+        "20.003180",
+        "0.510833"
+      ],
+      [
+        "Compose:recompose",
+        "68",
+        "17.638174",
+        "2.701354"
+      ],
+      [
+        "Choreographer#doFrame 616184747",
+        "1",
+        "15.712291",
+        "15.712291"
+      ],
+      [
+        "Choreographer#doFrame 616181063",
+        "1",
+        "15.210782",
+        "15.210782"
+      ],
+      [
+        "Choreographer#doFrame 616177587",
+        "1",
+        "14.950833",
+        "14.950833"
+      ],
+      [
+        "Choreographer#doFrame 616185430",
+        "1",
+        "9.101979",
+        "9.101979"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "82",
+        "6.967709",
+        "0.257656"
+      ],
+      [
+        "Choreographer#doFrame 616177638",
+        "1",
+        "4.949115",
+        "4.949115"
+      ],
+      [
+        "binder transaction",
+        "3",
+        "4.932969",
+        "1.870834"
+      ],
+      [
+        "Choreographer#doFrame 616177611",
+        "1",
+        "4.695000",
+        "4.695000"
+      ],
+      [
+        "Choreographer#doFrame 616184771",
+        "1",
+        "4.554323",
+        "4.554323"
+      ],
+      [
+        "Choreographer#doFrame 616178233",
+        "1",
+        "4.495260",
+        "4.495260"
+      ],
+      [
+        "Choreographer#doFrame 616178031",
+        "1",
+        "4.081354",
+        "4.081354"
+      ],
+      [
+        "handleEvent",
+        "3",
+        "3.610937",
+        "1.540677"
+      ],
+      [
+        "consumeEvents",
+        "3",
+        "3.582292",
+        "1.528698"
+      ],
+      [
+        "Choreographer#doFrame 616178057",
+        "1",
+        "2.696511",
+        "2.696511"
+      ],
+      [
+        "TextLayout:initLayout",
+        "5",
+        "2.680103",
+        "2.247239"
+      ],
+      [
+        "Choreographer#doFrame 616178005",
+        "1",
+        "2.566719",
+        "2.566719"
+      ],
+      [
+        "Choreographer#doFrame 616185171",
+        "1",
+        "2.515521",
+        "2.515521"
+      ],
+      [
+        "Choreographer#doFrame 616185184",
+        "1",
+        "2.313334",
+        "2.313334"
+      ],
+      [
+        "Choreographer#doFrame 616178018",
+        "1",
+        "2.025208",
+        "2.025208"
+      ],
+      [
+        "Choreographer#doFrame 616177992",
+        "1",
+        "1.971667",
+        "1.971667"
+      ],
+      [
+        "AndroidOwner:onTouch",
+        "3",
+        "1.861146",
+        "0.719792"
+      ],
+      [
+        "Compose:applyChanges",
+        "39",
+        "1.677656",
+        "0.429010"
+      ],
+      [
+        "Lock contention on ClassLinker classes lock (owner tid: 3796)",
+        "1",
+        "1.596927",
+        "1.596927"
+      ],
+      [
+        "Choreographer#doFrame 616177966",
+        "1",
+        "1.482552",
+        "1.482552"
+      ],
+      [
+        "Choreographer#doFrame 616177664",
+        "1",
+        "1.457187",
+        "1.457187"
+      ],
+      [
+        "Choreographer#doFrame 616177651",
+        "1",
+        "1.453594",
+        "1.453594"
+      ],
+      [
+        "Choreographer#doFrame 616177979",
+        "1",
+        "1.435990",
+        "1.435990"
+      ],
+      [
+        "Choreographer#doFrame 616184794",
+        "1",
+        "1.365365",
+        "1.365365"
+      ],
+      [
+        "deliverInputEvent src=0x1002 eventTimeNano=1806473041000000 id=0xd5264a58 UP, dt=25.57531(203.0,384.0)",
+        "1",
+        "1.347032",
+        "1.347032"
+      ]
+    ],
+    "main_states": [
+      [
+        "state",
+        "n",
+        "ms"
+      ],
+      [
+        "S",
+        "342",
+        "10473.688858"
+      ],
+      [
+        "Running",
+        "351",
+        "223.927803"
+      ],
+      [
+        "R",
+        "345",
+        "26.645106"
+      ],
+      [
+        "R+",
+        "6",
+        "3.293436"
+      ]
+    ],
+    "main_cpu": [
+      [
+        "cpu",
+        "ms"
+      ],
+      [
+        "0",
+        "3.430053"
+      ],
+      [
+        "1",
+        "7.343539"
+      ],
+      [
+        "2",
+        "17.237912"
+      ],
+      [
+        "3",
+        "6.432079"
+      ],
+      [
+        "4",
+        "2.532605"
+      ],
+      [
+        "5",
+        "17.769061"
+      ],
+      [
+        "6",
+        "135.609845"
+      ],
+      [
+        "7",
+        "33.572709"
+      ]
+    ],
+    "app_threads": [],
+    "app_cpu": [],
+    "llm_threads": [
+      [
+        "name",
+        "tid",
+        "cpu_ms"
+      ]
+    ],
+    "compose_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "78",
+        "166.557499",
+        "35.362761"
+      ],
+      [
+        "draw",
+        "78",
+        "158.062657",
+        "35.242656"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "78",
+        "83.275464",
+        "35.036927"
+      ],
+      [
+        "Record View#draw()",
+        "78",
+        "70.500726",
+        "12.507657"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "67",
+        "49.530941",
+        "9.561407"
+      ],
+      [
+        "Choreographer#doFrame 616177596",
+        "1",
+        "35.755886",
+        "35.755886"
+      ],
+      [
+        "Recomposer:recompose",
+        "75",
+        "32.109585",
+        "13.370677"
+      ],
+      [
+        "Recomposer:animation",
+        "67",
+        "20.003180",
+        "0.510833"
+      ],
+      [
+        "Compose:recompose",
+        "68",
+        "17.638174",
+        "2.701354"
+      ],
+      [
+        "Choreographer#doFrame 616184747",
+        "1",
+        "15.712291",
+        "15.712291"
+      ],
+      [
+        "Choreographer#doFrame 616181063",
+        "1",
+        "15.210782",
+        "15.210782"
+      ],
+      [
+        "Choreographer#doFrame 616177587",
+        "1",
+        "14.950833",
+        "14.950833"
+      ],
+      [
+        "Choreographer#doFrame 616185430",
+        "1",
+        "9.101979",
+        "9.101979"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "82",
+        "6.967709",
+        "0.257656"
+      ],
+      [
+        "Choreographer#doFrame 616177638",
+        "1",
+        "4.949115",
+        "4.949115"
+      ],
+      [
+        "Choreographer#doFrame 616177611",
+        "1",
+        "4.695000",
+        "4.695000"
+      ],
+      [
+        "Choreographer#doFrame 616184771",
+        "1",
+        "4.554323",
+        "4.554323"
+      ],
+      [
+        "Choreographer#doFrame 616178233",
+        "1",
+        "4.495260",
+        "4.495260"
+      ],
+      [
+        "Choreographer#doFrame 616178031",
+        "1",
+        "4.081354",
+        "4.081354"
+      ],
+      [
+        "Choreographer#doFrame 616178057",
+        "1",
+        "2.696511",
+        "2.696511"
+      ],
+      [
+        "TextLayout:initLayout",
+        "5",
+        "2.680103",
+        "2.247239"
+      ],
+      [
+        "Choreographer#doFrame 616178005",
+        "1",
+        "2.566719",
+        "2.566719"
+      ],
+      [
+        "Choreographer#doFrame 616185171",
+        "1",
+        "2.515521",
+        "2.515521"
+      ],
+      [
+        "Choreographer#doFrame 616185184",
+        "1",
+        "2.313334",
+        "2.313334"
+      ],
+      [
+        "Choreographer#doFrame 616178018",
+        "1",
+        "2.025208",
+        "2.025208"
+      ],
+      [
+        "Choreographer#doFrame 616177992",
+        "1",
+        "1.971667",
+        "1.971667"
+      ],
+      [
+        "Compose:applyChanges",
+        "39",
+        "1.677656",
+        "0.429010"
+      ],
+      [
+        "Choreographer#doFrame 616177966",
+        "1",
+        "1.482552",
+        "1.482552"
+      ],
+      [
+        "Choreographer#doFrame 616177664",
+        "1",
+        "1.457187",
+        "1.457187"
+      ],
+      [
+        "Choreographer#doFrame 616177651",
+        "1",
+        "1.453594",
+        "1.453594"
+      ],
+      [
+        "Choreographer#doFrame 616177979",
+        "1",
+        "1.435990",
+        "1.435990"
+      ],
+      [
+        "Choreographer#doFrame 616184794",
+        "1",
+        "1.365365",
+        "1.365365"
+      ],
+      [
+        "Choreographer#doFrame 616185015",
+        "1",
+        "1.342135",
+        "1.342135"
+      ],
+      [
+        "Choreographer#doFrame 616177859",
+        "1",
+        "1.330000",
+        "1.330000"
+      ],
+      [
+        "Choreographer#doFrame 616177677",
+        "1",
+        "1.327813",
+        "1.327813"
+      ],
+      [
+        "Choreographer#doFrame 616184859",
+        "1",
+        "1.322917",
+        "1.322917"
+      ],
+      [
+        "Choreographer#doFrame 616184820",
+        "1",
+        "1.319687",
+        "1.319687"
+      ],
+      [
+        "Choreographer#doFrame 616184833",
+        "1",
+        "1.315937",
+        "1.315937"
+      ],
+      [
+        "Choreographer#doFrame 616184989",
+        "1",
+        "1.314166",
+        "1.314166"
+      ],
+      [
+        "Choreographer#doFrame 616184898",
+        "1",
+        "1.311042",
+        "1.311042"
+      ]
+    ],
+    "frame_timeline": [
+      [
+        "jank_type",
+        "n"
+      ],
+      [
+        "Buffer Stuffing",
+        "142"
+      ],
+      [
+        "None",
+        "56"
+      ],
+      [
+        "App Deadline Missed",
+        "3"
+      ],
+      [
+        "Prediction Error, App Deadline Missed",
+        "1"
+      ],
+      [
+        "Prediction Error",
+        "1"
+      ]
+    ],
+    "gc_slices": [
+      [
+        "name",
+        "n",
+        "total_ms"
+      ]
+    ]
+  },
+  "T4_tool_scroll_1": {
+    "pid": "4241",
+    "upid": "4",
+    "main_tid": "4241",
+    "main_utid": "7",
+    "main_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "358",
+        "275.158222",
+        "18.095104"
+      ],
+      [
+        "draw",
+        "358",
+        "241.477396",
+        "17.893541"
+      ],
+      [
+        "consumeEvents",
+        "551",
+        "200.821081",
+        "0.972864"
+      ],
+      [
+        "input",
+        "275",
+        "180.930889",
+        "0.990833"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "358",
+        "135.056509",
+        "17.647552"
+      ],
+      [
+        "postAndWait",
+        "358",
+        "131.636466",
+        "17.635990"
+      ],
+      [
+        "AndroidOwner:onTouch",
+        "277",
+        "108.236052",
+        "2.318281"
+      ],
+      [
+        "Record View#draw()",
+        "358",
+        "95.020412",
+        "1.805312"
+      ],
+      [
+        "animation",
+        "269",
+        "59.486034",
+        "13.957448"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "514",
+        "31.081468",
+        "0.276719"
+      ],
+      [
+        "handleEvent",
+        "276",
+        "27.318328",
+        "0.950417"
+      ],
+      [
+        "Recomposer:recompose",
+        "18",
+        "20.960052",
+        "13.835573"
+      ],
+      [
+        "Choreographer#doFrame 616203079",
+        "1",
+        "19.096197",
+        "19.096197"
+      ],
+      [
+        "Choreographer#doFrame 616214928",
+        "1",
+        "17.741094",
+        "17.741094"
+      ],
+      [
+        "Compose:recompose",
+        "87",
+        "12.230621",
+        "2.389010"
+      ],
+      [
+        "Choreographer#doFrame 616211182",
+        "1",
+        "5.001979",
+        "5.001979"
+      ],
+      [
+        "Choreographer#doFrame 616203091",
+        "1",
+        "3.732135",
+        "3.732135"
+      ],
+      [
+        "Choreographer#doFrame 616205818",
+        "1",
+        "3.637083",
+        "3.637083"
+      ],
+      [
+        "Recomposer:animation",
+        "12",
+        "3.320779",
+        "0.401875"
+      ],
+      [
+        "Choreographer#doFrame 616203067",
+        "1",
+        "3.011354",
+        "3.011354"
+      ],
+      [
+        "Choreographer#doFrame 616214937",
+        "1",
+        "2.663073",
+        "2.663073"
+      ],
+      [
+        "ViewPostImeInputStage id=0xddd6ca4d",
+        "1",
+        "2.586980",
+        "2.586980"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "3",
+        "2.300469",
+        "1.551302"
+      ],
+      [
+        "binder transaction",
+        "3",
+        "2.299167",
+        "1.508750"
+      ],
+      [
+        "Choreographer#doFrame 616204493",
+        "1",
+        "1.975156",
+        "1.975156"
+      ],
+      [
+        "Choreographer#doFrame 616208840",
+        "1",
+        "1.907448",
+        "1.907448"
+      ],
+      [
+        "Choreographer#doFrame 616207409",
+        "1",
+        "1.862031",
+        "1.862031"
+      ],
+      [
+        "Choreographer#doFrame 616204584",
+        "1",
+        "1.841667",
+        "1.841667"
+      ],
+      [
+        "Choreographer#doFrame 616205960",
+        "1",
+        "1.836198",
+        "1.836198"
+      ],
+      [
+        "Choreographer#doFrame 616204505",
+        "1",
+        "1.835208",
+        "1.835208"
+      ],
+      [
+        "Choreographer#doFrame 616210298",
+        "1",
+        "1.792709",
+        "1.792709"
+      ],
+      [
+        "Choreographer#doFrame 616203321",
+        "1",
+        "1.783646",
+        "1.783646"
+      ],
+      [
+        "Choreographer#doFrame 616203282",
+        "1",
+        "1.782031",
+        "1.782031"
+      ],
+      [
+        "Choreographer#doFrame 616204571",
+        "1",
+        "1.770365",
+        "1.770365"
+      ],
+      [
+        "Choreographer#doFrame 616207460",
+        "1",
+        "1.721303",
+        "1.721303"
+      ],
+      [
+        "Choreographer#doFrame 616204558",
+        "1",
+        "1.715156",
+        "1.715156"
+      ],
+      [
+        "Choreographer#doFrame 616204545",
+        "1",
+        "1.714583",
+        "1.714583"
+      ],
+      [
+        "Choreographer#doFrame 616204753",
+        "1",
+        "1.705469",
+        "1.705469"
+      ],
+      [
+        "Choreographer#doFrame 616204636",
+        "1",
+        "1.705365",
+        "1.705365"
+      ],
+      [
+        "Choreographer#doFrame 616207655",
+        "1",
+        "1.703281",
+        "1.703281"
+      ]
+    ],
+    "main_states": [
+      [
+        "state",
+        "n",
+        "ms"
+      ],
+      [
+        "S",
+        "1246",
+        "11892.909678"
+      ],
+      [
+        "Running",
+        "1246",
+        "620.853752"
+      ],
+      [
+        "R",
+        "1245",
+        "92.429325"
+      ]
+    ],
+    "main_cpu": [
+      [
+        "cpu",
+        "ms"
+      ],
+      [
+        "0",
+        "6.965834"
+      ],
+      [
+        "1",
+        "2.353125"
+      ],
+      [
+        "2",
+        "0.919375"
+      ],
+      [
+        "3",
+        "11.324115"
+      ],
+      [
+        "4",
+        "4.932969"
+      ],
+      [
+        "5",
+        "0.585834"
+      ],
+      [
+        "6",
+        "582.991145"
+      ],
+      [
+        "7",
+        "10.781355"
+      ]
+    ],
+    "app_threads": [],
+    "app_cpu": [],
+    "llm_threads": [
+      [
+        "name",
+        "tid",
+        "cpu_ms"
+      ]
+    ],
+    "compose_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "358",
+        "275.158222",
+        "18.095104"
+      ],
+      [
+        "draw",
+        "358",
+        "241.477396",
+        "17.893541"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "358",
+        "135.056509",
+        "17.647552"
+      ],
+      [
+        "Record View#draw()",
+        "358",
+        "95.020412",
+        "1.805312"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "514",
+        "31.081468",
+        "0.276719"
+      ],
+      [
+        "Recomposer:recompose",
+        "18",
+        "20.960052",
+        "13.835573"
+      ],
+      [
+        "Choreographer#doFrame 616203079",
+        "1",
+        "19.096197",
+        "19.096197"
+      ],
+      [
+        "Choreographer#doFrame 616214928",
+        "1",
+        "17.741094",
+        "17.741094"
+      ],
+      [
+        "Compose:recompose",
+        "87",
+        "12.230621",
+        "2.389010"
+      ],
+      [
+        "Choreographer#doFrame 616211182",
+        "1",
+        "5.001979",
+        "5.001979"
+      ],
+      [
+        "Choreographer#doFrame 616203091",
+        "1",
+        "3.732135",
+        "3.732135"
+      ],
+      [
+        "Choreographer#doFrame 616205818",
+        "1",
+        "3.637083",
+        "3.637083"
+      ],
+      [
+        "Recomposer:animation",
+        "12",
+        "3.320779",
+        "0.401875"
+      ],
+      [
+        "Choreographer#doFrame 616203067",
+        "1",
+        "3.011354",
+        "3.011354"
+      ],
+      [
+        "Choreographer#doFrame 616214937",
+        "1",
+        "2.663073",
+        "2.663073"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "3",
+        "2.300469",
+        "1.551302"
+      ],
+      [
+        "Choreographer#doFrame 616204493",
+        "1",
+        "1.975156",
+        "1.975156"
+      ],
+      [
+        "Choreographer#doFrame 616208840",
+        "1",
+        "1.907448",
+        "1.907448"
+      ],
+      [
+        "Choreographer#doFrame 616207409",
+        "1",
+        "1.862031",
+        "1.862031"
+      ],
+      [
+        "Choreographer#doFrame 616204584",
+        "1",
+        "1.841667",
+        "1.841667"
+      ],
+      [
+        "Choreographer#doFrame 616205960",
+        "1",
+        "1.836198",
+        "1.836198"
+      ],
+      [
+        "Choreographer#doFrame 616204505",
+        "1",
+        "1.835208",
+        "1.835208"
+      ],
+      [
+        "Choreographer#doFrame 616210298",
+        "1",
+        "1.792709",
+        "1.792709"
+      ],
+      [
+        "Choreographer#doFrame 616203321",
+        "1",
+        "1.783646",
+        "1.783646"
+      ],
+      [
+        "Choreographer#doFrame 616203282",
+        "1",
+        "1.782031",
+        "1.782031"
+      ],
+      [
+        "Choreographer#doFrame 616204571",
+        "1",
+        "1.770365",
+        "1.770365"
+      ],
+      [
+        "Choreographer#doFrame 616207460",
+        "1",
+        "1.721303",
+        "1.721303"
+      ],
+      [
+        "Choreographer#doFrame 616204558",
+        "1",
+        "1.715156",
+        "1.715156"
+      ],
+      [
+        "Choreographer#doFrame 616204545",
+        "1",
+        "1.714583",
+        "1.714583"
+      ],
+      [
+        "Choreographer#doFrame 616204753",
+        "1",
+        "1.705469",
+        "1.705469"
+      ],
+      [
+        "Choreographer#doFrame 616204636",
+        "1",
+        "1.705365",
+        "1.705365"
+      ],
+      [
+        "Choreographer#doFrame 616207655",
+        "1",
+        "1.703281",
+        "1.703281"
+      ],
+      [
+        "Choreographer#doFrame 616203152",
+        "1",
+        "1.702917",
+        "1.702917"
+      ],
+      [
+        "Choreographer#doFrame 616210890",
+        "1",
+        "1.702447",
+        "1.702447"
+      ],
+      [
+        "Choreographer#doFrame 616208995",
+        "1",
+        "1.701198",
+        "1.701198"
+      ],
+      [
+        "Choreographer#doFrame 616204623",
+        "1",
+        "1.686562",
+        "1.686562"
+      ],
+      [
+        "Choreographer#doFrame 616204610",
+        "1",
+        "1.680938",
+        "1.680938"
+      ],
+      [
+        "Choreographer#doFrame 616203191",
+        "1",
+        "1.674739",
+        "1.674739"
+      ],
+      [
+        "Choreographer#doFrame 616204649",
+        "1",
+        "1.673958",
+        "1.673958"
+      ],
+      [
+        "Choreographer#doFrame 616203165",
+        "1",
+        "1.663230",
+        "1.663230"
+      ]
+    ],
+    "frame_timeline": [
+      [
+        "jank_type",
+        "n"
+      ],
+      [
+        "SurfaceFlinger Scheduling",
+        "290"
+      ],
+      [
+        "None",
+        "56"
+      ],
+      [
+        "Unknown Jank",
+        "6"
+      ],
+      [
+        "Prediction Error",
+        "2"
+      ],
+      [
+        "Buffer Stuffing",
+        "1"
+      ],
+      [
+        "App Deadline Missed, Unknown Jank",
+        "1"
+      ],
+      [
+        "App Deadline Missed, Buffer Stuffing",
+        "1"
+      ],
+      [
+        "App Deadline Missed",
+        "1"
+      ]
+    ],
+    "gc_slices": [
+      [
+        "name",
+        "n",
+        "total_ms"
+      ]
+    ]
+  },
+  "T4_tool_scroll_2": {
+    "pid": "4630",
+    "upid": "3",
+    "main_tid": "4630",
+    "main_utid": "12",
+    "main_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "359",
+        "269.368398",
+        "4.779011"
+      ],
+      [
+        "draw",
+        "359",
+        "234.997294",
+        "4.000261"
+      ],
+      [
+        "consumeEvents",
+        "553",
+        "196.498143",
+        "1.002135"
+      ],
+      [
+        "input",
+        "274",
+        "176.560311",
+        "1.016667"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "359",
+        "132.424630",
+        "1.454843"
+      ],
+      [
+        "postAndWait",
+        "359",
+        "128.760268",
+        "1.423855"
+      ],
+      [
+        "AndroidOwner:onTouch",
+        "279",
+        "102.385832",
+        "0.612291"
+      ],
+      [
+        "Record View#draw()",
+        "359",
+        "90.843026",
+        "2.437396"
+      ],
+      [
+        "animation",
+        "272",
+        "58.005848",
+        "16.987657"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "513",
+        "32.875901",
+        "0.305469"
+      ],
+      [
+        "handleEvent",
+        "279",
+        "27.489524",
+        "1.012396"
+      ],
+      [
+        "Recomposer:recompose",
+        "18",
+        "23.469999",
+        "16.833646"
+      ],
+      [
+        "Choreographer#doFrame 616242567",
+        "1",
+        "21.880729",
+        "21.880729"
+      ],
+      [
+        "Compose:recompose",
+        "87",
+        "14.290052",
+        "2.832396"
+      ],
+      [
+        "Choreographer#doFrame 616233451",
+        "1",
+        "4.319427",
+        "4.319427"
+      ],
+      [
+        "Choreographer#doFrame 616238852",
+        "1",
+        "3.588125",
+        "3.588125"
+      ],
+      [
+        "binder transaction",
+        "3",
+        "3.491772",
+        "1.849063"
+      ],
+      [
+        "Recomposer:animation",
+        "12",
+        "3.211928",
+        "0.405886"
+      ],
+      [
+        "Choreographer#doFrame 616230673",
+        "1",
+        "2.896770",
+        "2.896770"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "3",
+        "2.830990",
+        "2.113542"
+      ],
+      [
+        "Choreographer#doFrame 616242576",
+        "1",
+        "2.213490",
+        "2.213490"
+      ],
+      [
+        "Choreographer#doFrame 616237886",
+        "1",
+        "1.991146",
+        "1.991146"
+      ],
+      [
+        "Choreographer#doFrame 616235013",
+        "1",
+        "1.851042",
+        "1.851042"
+      ],
+      [
+        "Choreographer#doFrame 616236449",
+        "1",
+        "1.837187",
+        "1.837187"
+      ],
+      [
+        "Choreographer#doFrame 616232116",
+        "1",
+        "1.822292",
+        "1.822292"
+      ],
+      [
+        "Choreographer#doFrame 616233545",
+        "1",
+        "1.736302",
+        "1.736302"
+      ],
+      [
+        "Choreographer#doFrame 616235246",
+        "1",
+        "1.730833",
+        "1.730833"
+      ],
+      [
+        "Choreographer#doFrame 616235064",
+        "1",
+        "1.714844",
+        "1.714844"
+      ],
+      [
+        "Choreographer#doFrame 616233648",
+        "1",
+        "1.699843",
+        "1.699843"
+      ],
+      [
+        "Choreographer#doFrame 616235194",
+        "1",
+        "1.678802",
+        "1.678802"
+      ],
+      [
+        "Choreographer#doFrame 616230685",
+        "1",
+        "1.670938",
+        "1.670938"
+      ],
+      [
+        "Choreographer#doFrame 616235103",
+        "1",
+        "1.670521",
+        "1.670521"
+      ],
+      [
+        "Choreographer#doFrame 616230854",
+        "1",
+        "1.663594",
+        "1.663594"
+      ],
+      [
+        "Choreographer#doFrame 616232258",
+        "1",
+        "1.653333",
+        "1.653333"
+      ],
+      [
+        "Choreographer#doFrame 616232297",
+        "1",
+        "1.642917",
+        "1.642917"
+      ],
+      [
+        "Choreographer#doFrame 616232336",
+        "1",
+        "1.625417",
+        "1.625417"
+      ],
+      [
+        "Choreographer#doFrame 616232245",
+        "1",
+        "1.625312",
+        "1.625312"
+      ],
+      [
+        "Choreographer#doFrame 616235233",
+        "1",
+        "1.618073",
+        "1.618073"
+      ],
+      [
+        "Choreographer#doFrame 616230815",
+        "1",
+        "1.617604",
+        "1.617604"
+      ],
+      [
+        "Choreographer#doFrame 616230828",
+        "1",
+        "1.606823",
+        "1.606823"
+      ]
+    ],
+    "main_states": [
+      [
+        "state",
+        "n",
+        "ms"
+      ],
+      [
+        "S",
+        "1253",
+        "11902.356085"
+      ],
+      [
+        "Running",
+        "1254",
+        "595.912973"
+      ],
+      [
+        "R",
+        "1254",
+        "136.920884"
+      ]
+    ],
+    "main_cpu": [
+      [
+        "cpu",
+        "ms"
+      ],
+      [
+        "1",
+        "11.838906"
+      ],
+      [
+        "2",
+        "0.877969"
+      ],
+      [
+        "3",
+        "1.698072"
+      ],
+      [
+        "4",
+        "0.499843"
+      ],
+      [
+        "5",
+        "13.887396"
+      ],
+      [
+        "6",
+        "558.322347"
+      ],
+      [
+        "7",
+        "8.788440"
+      ]
+    ],
+    "app_threads": [],
+    "app_cpu": [],
+    "llm_threads": [
+      [
+        "name",
+        "tid",
+        "cpu_ms"
+      ]
+    ],
+    "compose_slices": [
+      [
+        "name",
+        "n",
+        "total_ms",
+        "max_ms"
+      ],
+      [
+        "traversal",
+        "359",
+        "269.368398",
+        "4.779011"
+      ],
+      [
+        "draw",
+        "359",
+        "234.997294",
+        "4.000261"
+      ],
+      [
+        "HardwareRenderer#syncAndDrawFrame",
+        "359",
+        "132.424630",
+        "1.454843"
+      ],
+      [
+        "Record View#draw()",
+        "359",
+        "90.843026",
+        "2.437396"
+      ],
+      [
+        "Choreographer#scheduleVsyncLocked",
+        "513",
+        "32.875901",
+        "0.305469"
+      ],
+      [
+        "Recomposer:recompose",
+        "18",
+        "23.469999",
+        "16.833646"
+      ],
+      [
+        "Choreographer#doFrame 616242567",
+        "1",
+        "21.880729",
+        "21.880729"
+      ],
+      [
+        "Compose:recompose",
+        "87",
+        "14.290052",
+        "2.832396"
+      ],
+      [
+        "Choreographer#doFrame 616233451",
+        "1",
+        "4.319427",
+        "4.319427"
+      ],
+      [
+        "Choreographer#doFrame 616238852",
+        "1",
+        "3.588125",
+        "3.588125"
+      ],
+      [
+        "Recomposer:animation",
+        "12",
+        "3.211928",
+        "0.405886"
+      ],
+      [
+        "Choreographer#doFrame 616230673",
+        "1",
+        "2.896770",
+        "2.896770"
+      ],
+      [
+        "AndroidOwner:measureAndLayout",
+        "3",
+        "2.830990",
+        "2.113542"
+      ],
+      [
+        "Choreographer#doFrame 616242576",
+        "1",
+        "2.213490",
+        "2.213490"
+      ],
+      [
+        "Choreographer#doFrame 616237886",
+        "1",
+        "1.991146",
+        "1.991146"
+      ],
+      [
+        "Choreographer#doFrame 616235013",
+        "1",
+        "1.851042",
+        "1.851042"
+      ],
+      [
+        "Choreographer#doFrame 616236449",
+        "1",
+        "1.837187",
+        "1.837187"
+      ],
+      [
+        "Choreographer#doFrame 616232116",
+        "1",
+        "1.822292",
+        "1.822292"
+      ],
+      [
+        "Choreographer#doFrame 616233545",
+        "1",
+        "1.736302",
+        "1.736302"
+      ],
+      [
+        "Choreographer#doFrame 616235246",
+        "1",
+        "1.730833",
+        "1.730833"
+      ],
+      [
+        "Choreographer#doFrame 616235064",
+        "1",
+        "1.714844",
+        "1.714844"
+      ],
+      [
+        "Choreographer#doFrame 616233648",
+        "1",
+        "1.699843",
+        "1.699843"
+      ],
+      [
+        "Choreographer#doFrame 616235194",
+        "1",
+        "1.678802",
+        "1.678802"
+      ],
+      [
+        "Choreographer#doFrame 616230685",
+        "1",
+        "1.670938",
+        "1.670938"
+      ],
+      [
+        "Choreographer#doFrame 616235103",
+        "1",
+        "1.670521",
+        "1.670521"
+      ],
+      [
+        "Choreographer#doFrame 616230854",
+        "1",
+        "1.663594",
+        "1.663594"
+      ],
+      [
+        "Choreographer#doFrame 616232258",
+        "1",
+        "1.653333",
+        "1.653333"
+      ],
+      [
+        "Choreographer#doFrame 616232297",
+        "1",
+        "1.642917",
+        "1.642917"
+      ],
+      [
+        "Choreographer#doFrame 616232336",
+        "1",
+        "1.625417",
+        "1.625417"
+      ],
+      [
+        "Choreographer#doFrame 616232245",
+        "1",
+        "1.625312",
+        "1.625312"
+      ],
+      [
+        "Choreographer#doFrame 616235233",
+        "1",
+        "1.618073",
+        "1.618073"
+      ],
+      [
+        "Choreographer#doFrame 616230815",
+        "1",
+        "1.617604",
+        "1.617604"
+      ],
+      [
+        "Choreographer#doFrame 616230828",
+        "1",
+        "1.606823",
+        "1.606823"
+      ],
+      [
+        "Choreographer#doFrame 616232219",
+        "1",
+        "1.605104",
+        "1.605104"
+      ],
+      [
+        "Choreographer#doFrame 616232232",
+        "1",
+        "1.599062",
+        "1.599062"
+      ],
+      [
+        "Choreographer#doFrame 616233661",
+        "1",
+        "1.596823",
+        "1.596823"
+      ],
+      [
+        "Choreographer#doFrame 616232167",
+        "1",
+        "1.592813",
+        "1.592813"
+      ],
+      [
+        "Choreographer#doFrame 616234046",
+        "1",
+        "1.590573",
+        "1.590573"
+      ],
+      [
+        "Choreographer#doFrame 616230867",
+        "1",
+        "1.588334",
+        "1.588334"
+      ],
+      [
+        "Choreographer#doFrame 616230802",
+        "1",
+        "1.585625",
+        "1.585625"
+      ]
+    ],
+    "frame_timeline": [
+      [
+        "jank_type",
+        "n"
+      ],
+      [
+        "SurfaceFlinger Scheduling",
+        "348"
+      ],
+      [
+        "Unknown Jank",
+        "6"
+      ],
+      [
+        "Prediction Error",
+        "2"
+      ],
+      [
+        "None",
+        "2"
+      ],
+      [
+        "App Deadline Missed",
+        "1"
+      ]
+    ],
+    "gc_slices": [
+      [
+        "name",
+        "n",
+        "total_ms"
+      ]
+    ]
+  }
+}

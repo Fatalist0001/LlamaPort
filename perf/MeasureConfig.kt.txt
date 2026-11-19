@@ -1,0 +1,55 @@
+package com.llamaport.app
+
+import android.content.Intent
+
+/**
+ * Measurement-only switches, populated from launch intent extras.
+ * Without any `measure_*` extra everything stays false and the app behaves
+ * exactly like a normal build.
+ */
+object MeasureConfig {
+    const val DEFAULT_PROMPT =
+        "Подробно объясни, как работает хеш-таблица. Приведи пример кода на Kotlin и разбери сложность операций."
+
+    @Volatile var enabled = false
+    @Volatile var fakeRate = 0
+    @Volatile var publishHz = 0
+    @Volatile var noLogoAnimation = false
+    @Volatile var plainText = false
+    @Volatile var realRun = false
+    @Volatile var seedLongChat = false
+    @Volatile var thinkingChat = false
+    @Volatile var emptyChat = false
+    @Volatile var prompt = DEFAULT_PROMPT
+    @Volatile var fakeTokens = 0
+
+    fun fromIntent(intent: Intent?) {
+        enabled = false
+        fakeRate = 0
+        publishHz = 0
+        noLogoAnimation = false
+        plainText = false
+        realRun = false
+        seedLongChat = false
+        thinkingChat = false
+        emptyChat = false
+        prompt = DEFAULT_PROMPT
+        fakeTokens = 0
+
+        val extras = intent?.extras ?: return
+        val keys = extras.keySet()
+        if (keys.none { it.startsWith("measure_") }) return
+
+        enabled = true
+        fakeRate = extras.getInt("measure_fake", 0).coerceIn(0, 120)
+        publishHz = extras.getInt("measure_publish_hz", 0).coerceIn(0, 120)
+        noLogoAnimation = extras.getBoolean("measure_no_logo", false)
+        plainText = extras.getBoolean("measure_plain", false)
+        realRun = extras.getBoolean("measure_real", false)
+        seedLongChat = extras.getBoolean("measure_seed_long", false)
+        thinkingChat = extras.getBoolean("measure_thinking", false)
+        emptyChat = extras.getBoolean("measure_empty", false)
+        prompt = extras.getString("measure_prompt")?.takeIf { it.isNotBlank() } ?: DEFAULT_PROMPT
+        fakeTokens = extras.getInt("measure_fake_tokens", 0).coerceAtLeast(0)
+    }
+}

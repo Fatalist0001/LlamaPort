@@ -1,0 +1,54 @@
+[
+  {
+    "name": "T1_tool_1",
+    "header": [
+      203,
+      507
+    ],
+    "expanded_result": {
+      "chars": 8035,
+      "bounds": [
+        57,
+        681,
+        1023,
+        1446
+      ],
+      "height": 765
+    },
+    "temp": 35.8
+  },
+  {
+    "name": "T1_tool_2",
+    "header": [
+      203,
+      507
+    ],
+    "expanded_result": {
+      "chars": 8035,
+      "bounds": [
+        57,
+        681,
+        1023,
+        1446
+      ],
+      "height": 765
+    },
+    "temp": 35.8
+  },
+  {
+    "name": "T2_round_1",
+    "temp": 35.8
+  },
+  {
+    "name": "T2_round_2",
+    "temp": 35.7
+  },
+  {
+    "name": "T3_scan_1",
+    "temp": 35.6
+  },
+  {
+    "name": "T3_scan_2",
+    "temp": 35.6
+  }
+]

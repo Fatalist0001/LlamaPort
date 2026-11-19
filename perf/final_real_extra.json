@@ -1,0 +1,16 @@
+[
+  {
+    "scenario": "F_real_2",
+    "first_token": true,
+    "completed": true,
+    "frames": 4013,
+    "temp": 35.0
+  },
+  {
+    "scenario": "F_real_3",
+    "first_token": true,
+    "completed": true,
+    "frames": 3965,
+    "temp": 35.8
+  }
+]
