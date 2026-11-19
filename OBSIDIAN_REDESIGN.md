@@ -85,7 +85,7 @@ commit. Functional flows are exercised on the connected device (RMO-NX1).
 | 3. Chat | `d6a6493` | Graphite user bubbles with hairline; free assistant layout with LlamaPort header; Markdown hierarchy, muted syntax highlighting, code surface with language header and copy button; thinking panel with live silver activity and collapse; tool panel; streaming shimmer and cursor; mono metrics and redesigned metrics dialog. |
 | 4. Models | `f1c4381` | Segmented animated RAM panel with legend readouts; technical GGUF cards (size, quant, parameters, vision/audio, mmproj, need, fit, active state); indeterminate load sequence with dimmed siblings and success pulse; load sheet stays open until the result; redesigned memory warning with need/available comparison. |
 | 5. Drawer + settings | `0d24359`, `2947e66` | Layered drawer, robot tile, staged content reveal, active chat silver rail, compact rename/delete, settings card; three Obsidian settings panels, prompt editor, custom sliders/switches/checks/segments, exact mono inputs, animated values, mono backend line. |
-| 6. Polish | final commit | Reduced-motion audit, concurrent-animation reduction during streaming, short-screen scrolling for the empty state, light theme pass, device screenshots, signed debug + release builds. |
+| 6. Polish | `2e7e3d4`, `596fb9f` | Reduced-motion audit, concurrent-animation reduction during streaming, short-screen scrolling for the empty state, light theme pass, device screenshots, signed debug + release builds. |
 
 ### Design decisions
 
@@ -99,7 +99,8 @@ commit. Functional flows are exercised on the connected device (RMO-NX1).
 
 ### Verification performed on the connected device
 
-- Kotlin compilation and debug APK build after every stage; release build at the end.
+- Kotlin compilation and debug APK build after every stage; R8 release builds at the end, signed with the project key and verified to install/launch (debug-signed variant).
+- GGUF import through the system picker (temporary test file), card refresh, and long-press deletion. This exposed a real bug: swipe/remember state in the plain model Column was position-based, so importing a file could move the delete callback to the neighbouring card. Fixed with `key(file.absolutePath)` in `ModelsSheet.kt` (`596fb9f`), then re-verified import and deletion with the correct target.
 - Model load/unload, mmproj auto-pairing (Omni + projector), active model state.
 - New chat, empty state, drawer navigation, session rename.
 - Session delete and snackbar undo path (delete verified; undo logic unchanged).
