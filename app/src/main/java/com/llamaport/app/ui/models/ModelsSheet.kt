@@ -42,6 +42,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -255,26 +256,31 @@ internal fun ModelsSheet(
                 val approximate = !(active && state.estimate != null)
                 val loading = loadingFile == file
                 val dimmed = state.loadingModel && !loading
-                Reveal(index = 2 + index) {
-                    SwipeableModelCard(
-                        file = file,
-                        mmproj = mmproj,
-                        active = active,
-                        loading = loading,
-                        dimmed = dimmed,
-                        vision = if (active) state.supportsVision else mmproj != null,
-                        audio = active && state.supportsAudio,
-                        needMb = needMb,
-                        approximate = approximate,
-                        availMb = availMb,
-                        enabled = enabled,
-                        successTick = if (active && !dimmed) successTick else 0,
-                        onLoad = {
-                            pendingFile = file
-                            onLoad(file)
-                        },
-                        onDeleteRequest = { pendingDelete = file },
-                    )
+                // Keep swipe/remember state attached to the file, not to the
+                // list slot: importing or deleting a model must not move the
+                // delete callback onto a neighbouring card.
+                key(file.absolutePath) {
+                    Reveal(index = 2 + index) {
+                        SwipeableModelCard(
+                            file = file,
+                            mmproj = mmproj,
+                            active = active,
+                            loading = loading,
+                            dimmed = dimmed,
+                            vision = if (active) state.supportsVision else mmproj != null,
+                            audio = active && state.supportsAudio,
+                            needMb = needMb,
+                            approximate = approximate,
+                            availMb = availMb,
+                            enabled = enabled,
+                            successTick = if (active && !dimmed) successTick else 0,
+                            onLoad = {
+                                pendingFile = file
+                                onLoad(file)
+                            },
+                            onDeleteRequest = { pendingDelete = file },
+                        )
+                    }
                 }
             }
         }
