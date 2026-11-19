@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import java.util.Calendar
 import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.components.Eyebrow
+import com.llamaport.app.ui.components.Hairline
 import com.llamaport.app.ui.components.ObsidianButton
 import com.llamaport.app.ui.components.ObsidianCore
 import com.llamaport.app.ui.components.ObsidianIconButton
@@ -86,6 +89,7 @@ import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
 import com.llamaport.app.ui.theme.EyebrowStyle
+import com.llamaport.app.ui.theme.MonoSmall
 import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlin.math.PI
@@ -263,8 +267,10 @@ internal fun ObsidianTopBar(
 }
 
 /**
- * Side drawer: chat history plus settings. Replaces the old "chats" and
- * "settings" sheets.
+ * Side drawer: layered surface, technical header and the chat history. The
+ * sheet slides with the Material drawer; inside it, header, history and footer
+ * follow with a small stagger, and the robot ticker stops when the drawer is
+ * not active.
  */
 @Composable
 internal fun AppDrawer(
@@ -286,115 +292,229 @@ internal fun AppDrawer(
             state.sessions.filter { it.messageCount > 0 || it.id == state.activeSessionId },
         )
     }
+    val reveal = remember { Animatable(1f) }
+    LaunchedEffect(drawerActive) {
+        if (drawerActive) {
+            reveal.snapTo(0f)
+            reveal.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = MotionTokens.Durations.COMPLEX,
+                    easing = MotionTokens.Easing.EmphasizedDecelerate,
+                ),
+            )
+        }
+    }
 
     ModalDrawerSheet(
-        drawerContainerColor = palette.surface,
+        modifier = Modifier
+            .fillMaxHeight()
+            .fillMaxWidth(0.82f),
+        drawerContainerColor = palette.background,
         drawerContentColor = palette.textPrimary,
         drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AsciiRobot(
-                        state = robotStateFor(state),
-                        size = 40.dp,
-                        // The drawer content stays composed while the drawer is
-                        // closed; freeze the robot so it never animates offscreen.
-                        active = drawerActive,
-                    )
-                    Spacer(Modifier.width(12.dp))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(palette.surface, palette.background),
+                    ),
+                ),
+        ) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+                DrawerPart(reveal, 0) {
                     Column {
-                        Text(
-                            "LlamaPort",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            state.modelName ?: "модель не загружена",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = palette.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                HorizontalDivider(color = palette.hairline)
-                Row(
-                    Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Чаты",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onNewChat, enabled = !state.generating) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Новый")
+                        Row(
+                            Modifier.padding(start = 18.dp, end = 14.dp, top = 20.dp, bottom = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.card)
+                                    .border(1.dp, palette.hairline, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                AsciiRobot(
+                                    state = robotStateFor(state),
+                                    size = 32.dp,
+                                    // The drawer content stays composed while the
+                                    // drawer is closed; freeze the robot so it never
+                                    // animates offscreen.
+                                    active = drawerActive,
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "LlamaPort",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = palette.textPrimary,
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    StateDot(
+                                        color = if (state.modelLoaded) palette.success else palette.textMuted,
+                                        size = 4.dp,
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(
+                                        state.modelName ?: "модель не загружена",
+                                        style = MonoSmall,
+                                        color = palette.textMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            ObsidianIconButton(
+                                icon = Icons.Filled.Add,
+                                contentDescription = "Новый чат",
+                                onClick = onNewChat,
+                                enabled = !state.generating,
+                                container = palette.card,
+                                borderColor = palette.hairline,
+                                tint = palette.silver,
+                                size = 38.dp,
+                                iconSize = 18.dp,
+                            )
+                        }
+                        Hairline(color = palette.hairline)
                     }
                 }
 
-                if (visibleSessions.isEmpty()) {
-                    Text(
-                        "Пока нет чатов",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.textSecondary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                    Spacer(Modifier.weight(1f))
-                } else {
-                    LazyColumn(
-                        Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                DrawerPart(reveal, 1) {
+                    Row(
+                        Modifier.padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        visibleSessions.forEach { (group, sessions) ->
-                            item(key = "group-${group.name}") {
-                                Text(
-                                    group.label,
-                                    style = EyebrowStyle,
-                                    color = palette.textMuted,
-                                    modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp),
-                                )
-                            }
-                            items(items = sessions, key = { it.id }) { session ->
-                                SessionRow(
-                                    session = session,
-                                    active = session.id == state.activeSessionId,
-                                    enabled = !state.generating,
-                                    onSelect = { onSelectSession(session.id) },
-                                    onRename = {
-                                        renaming = session
-                                        renameText = session.title
-                                    },
-                                    onDelete = { onDeleteSession(session.id) },
-                                    modifier = Modifier.animateItem(),
-                                )
+                        Eyebrow(text = "история чатов", color = palette.textMuted)
+                        Spacer(Modifier.weight(1f))
+                        if (state.generating) {
+                            StateDot(color = palette.silver, size = 4.dp, pulse = true)
+                            Spacer(Modifier.width(6.dp))
+                            Text("ИДЁТ ГЕНЕРАЦИЯ", style = MonoSmall, color = palette.silverDim)
+                        }
+                    }
+                }
+
+                DrawerPart(reveal, 2, Modifier.weight(1f)) {
+                    if (visibleSessions.isEmpty()) {
+                        Column(
+                            Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                AppIcons.Chat,
+                                contentDescription = null,
+                                tint = palette.textMuted,
+                                modifier = Modifier.size(26.dp),
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Пока нет чатов",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = palette.textSecondary,
+                            )
+                            Text(
+                                "Новый чат появится здесь",
+                                style = MonoSmall,
+                                color = palette.textMuted,
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        ) {
+                            visibleSessions.forEach { (group, sessions) ->
+                                item(key = "group-${group.name}") {
+                                    Eyebrow(
+                                        text = group.label,
+                                        color = palette.textMuted,
+                                        modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 6.dp),
+                                    )
+                                }
+                                items(items = sessions, key = { it.id }) { session ->
+                                    SessionRow(
+                                        session = session,
+                                        active = session.id == state.activeSessionId,
+                                        enabled = !state.generating,
+                                        onSelect = { onSelectSession(session.id) },
+                                        onRename = {
+                                            renaming = session
+                                            renameText = session.title
+                                        },
+                                        onDelete = { onDeleteSession(session.id) },
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                HorizontalDivider(color = palette.hairline)
-                NavigationDrawerItem(
-                    label = { Text("Настройки") },
-                    icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
-                    selected = false,
-                    onClick = onOpenSettings,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-                if (state.backendInfo.isNotBlank()) {
-                    Text(
-                        state.backendInfo,
-                        style = EyebrowStyle,
-                        color = palette.textMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    )
+                DrawerPart(reveal, 3) {
+                    Column {
+                        Hairline(color = palette.hairline)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .background(palette.card)
+                                .border(1.dp, palette.hairline, MaterialTheme.shapes.small)
+                                .pressable(onClick = onOpenSettings)
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(28.dp)
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(palette.nested),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Settings,
+                                    contentDescription = null,
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Настройки",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = palette.textPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                AppIcons.Chevron,
+                                contentDescription = null,
+                                tint = palette.textMuted,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .graphicsLayer { rotationZ = -90f },
+                            )
+                        }
+                        if (state.backendInfo.isNotBlank()) {
+                            Text(
+                                state.backendInfo,
+                                style = MonoSmall,
+                                color = palette.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            )
+                        } else {
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
             // Same SnackbarHostState as the scaffold: while the drawer is open
@@ -413,7 +533,13 @@ internal fun AppDrawer(
             onDismissRequest = { renaming = null },
             shape = MaterialTheme.shapes.extraLarge,
             containerColor = palette.card,
-            title = { Text("Переименовать чат") },
+            title = {
+                Column {
+                    Eyebrow(text = "история", color = palette.textMuted)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Переименовать чат", style = MaterialTheme.typography.titleLarge)
+                }
+            },
             text = {
                 OutlinedTextField(
                     value = renameText,
@@ -431,15 +557,38 @@ internal fun AppDrawer(
                     },
                     enabled = renameText.isNotBlank(),
                 ) {
-                    Text("Сохранить")
+                    Text("Сохранить", color = palette.silver)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { renaming = null }) {
-                    Text("Отмена")
+                    Text("Отмена", color = palette.textSecondary)
                 }
             },
         )
+    }
+}
+
+/**
+ * Staggered drawer content reveal. Reads the shared animation only in the draw
+ * phase, so opening the drawer does not recompose the whole history list.
+ */
+@Composable
+private fun DrawerPart(
+    reveal: Animatable<Float, *>,
+    index: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier.graphicsLayer {
+            val start = index * 0.08f
+            val progress = ((reveal.value - start) / 0.76f).coerceIn(0f, 1f)
+            alpha = progress
+            translationX = (1f - progress) * 20.dp.toPx()
+        },
+    ) {
+        content()
     }
 }
 

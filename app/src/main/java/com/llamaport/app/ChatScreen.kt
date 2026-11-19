@@ -17,6 +17,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -133,6 +135,7 @@ import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.settings.SettingsSheet
 import com.llamaport.app.ui.theme.EyebrowStyle
 import com.llamaport.app.ui.theme.MonoNumeric
+import com.llamaport.app.ui.theme.MonoSmall
 import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
@@ -939,18 +942,29 @@ internal fun SessionRow(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val palette = ObsidianTheme.palette
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) onDelete()
             false
         },
     )
+    val background by animateColorAsState(
+        targetValue = if (active) palette.nested else palette.card,
+        animationSpec = tween(MotionTokens.Durations.SHORT),
+        label = "sessionBackground",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (active) palette.silver.copy(alpha = 0.42f) else palette.hairline,
+        animationSpec = tween(MotionTokens.Durations.SHORT),
+        label = "sessionBorder",
+    )
 
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
         enableDismissFromEndToStart = enabled,
-        modifier = modifier.padding(vertical = 4.dp),
+        modifier = modifier.padding(vertical = 3.dp),
         backgroundContent = {
             // Show the delete hint only while the row is actually swiped.
             val reveal = dismissState.progress
@@ -959,77 +973,108 @@ internal fun SessionRow(
                     Modifier
                         .fillMaxSize()
                         .clip(MaterialTheme.shapes.medium)
-                        .background(
-                            MaterialTheme.colorScheme.errorContainer.copy(
-                                alpha = (reveal * 1.6f).coerceAtMost(1f),
-                            ),
-                        )
-                        .padding(horizontal = 20.dp),
+                        .background(palette.error.copy(alpha = (reveal * 0.22f).coerceAtMost(0.22f)))
+                        .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
                     Icon(
                         Icons.Outlined.Delete,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        tint = palette.error,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
         },
     ) {
-        Surface(
-            onClick = onSelect,
-            enabled = enabled,
-            shape = MaterialTheme.shapes.medium,
-            color = if (active) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                Modifier.padding(start = 14.dp, end = 2.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        Box(Modifier.fillMaxWidth()) {
+            Surface(
+                onClick = onSelect,
+                enabled = enabled,
+                shape = MaterialTheme.shapes.medium,
+                color = background,
+                contentColor = palette.textPrimary,
+                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        session.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val preview = session.preview.ifBlank {
-                        if (session.messageCount > 0) "Думает…" else ""
-                    }
-                    if (preview.isNotBlank()) {
+                Row(
+                    Modifier.padding(start = 14.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            preview,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            session.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (active) palette.textPrimary else palette.textPrimary.copy(alpha = 0.92f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${session.messageCount} сообщ. · " + shortRelativeTime(session.updatedAt),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (session.modelName.isNotBlank()) {
-                            SessionModelBadge(session.modelName)
+                        val preview = session.preview.ifBlank {
+                            if (session.messageCount > 0) "Думает…" else ""
+                        }
+                        if (preview.isNotBlank()) {
+                            Text(
+                                preview,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 5.dp),
+                        ) {
+                            Text(
+                                "${session.messageCount} сообщ. · " + shortRelativeTime(session.updatedAt),
+                                style = MonoSmall,
+                                color = palette.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (session.modelName.isNotBlank()) {
+                                SessionModelBadge(session.modelName)
+                            }
                         }
                     }
+                    Spacer(Modifier.width(2.dp))
+                    ObsidianIconButton(
+                        icon = Icons.Outlined.Create,
+                        contentDescription = "Переименовать",
+                        onClick = onRename,
+                        enabled = enabled,
+                        tint = palette.textMuted,
+                        size = 28.dp,
+                        iconSize = 14.dp,
+                    )
+                    ObsidianIconButton(
+                        icon = Icons.Outlined.Delete,
+                        contentDescription = "Удалить чат",
+                        onClick = onDelete,
+                        enabled = enabled,
+                        tint = if (active) palette.error.copy(alpha = 0.75f) else palette.textMuted,
+                        size = 28.dp,
+                        iconSize = 14.dp,
+                    )
                 }
-                IconButton(onClick = onRename, enabled = enabled) {
-                    Icon(Icons.Outlined.Create, contentDescription = "Переименовать")
-                }
-                IconButton(onClick = onDelete, enabled = enabled) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "Удалить чат")
+            }
+            if (active) {
+                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                    drawRoundRect(
+                        color = palette.silver.copy(alpha = 0.8f),
+                        topLeft = androidx.compose.ui.geometry.Offset(1.dp.toPx(), 11.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(
+                            2.dp.toPx(),
+                            size.height - 22.dp.toPx(),
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                            1.dp.toPx(),
+                            1.dp.toPx(),
+                        ),
+                    )
                 }
             }
         }
@@ -1049,22 +1094,24 @@ private fun shortRelativeTime(timestamp: Long): String {
     }
 }
 
-/** Tiny chip naming the model the chat was held with. */
+/** Tiny technical badge naming the model the chat was held with. */
 @Composable
 private fun SessionModelBadge(name: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.extraSmall,
+    val palette = ObsidianTheme.palette
+    Box(
+        Modifier
+            .widthIn(max = 108.dp)
+            .clip(PillShape)
+            .background(palette.elevated.copy(alpha = 0.6f))
+            .border(1.dp, palette.hairline, PillShape)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             name.substringBeforeLast('.').take(18),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MonoSmall.copy(fontSize = 9.sp),
+            color = palette.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .widthIn(max = 116.dp)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
 }
