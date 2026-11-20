@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -60,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -308,6 +311,12 @@ internal fun AppDrawer(
             )
         }
     }
+    // The history list. Its scroll state also gates the header robot: while the
+    // user drags or flings the list, every robot tick would invalidate a frame
+    // mid-scroll for an animation nobody is looking at, so the robot freezes
+    // for the duration of the gesture and resumes when the list settles.
+    val sessionsListState = rememberLazyListState()
+    val scrolling by remember { derivedStateOf { sessionsListState.isScrollInProgress } }
 
     ModalDrawerSheet(
         modifier = Modifier
@@ -315,7 +324,10 @@ internal fun AppDrawer(
             .fillMaxWidth(0.82f),
         drawerContainerColor = palette.background,
         drawerContentColor = palette.textPrimary,
-        drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+        // A rounded full-height Surface forces the changing LazyColumn into an
+        // 886x2274 offscreen texture; Perfetto showed that texture uploading on
+        // every scroll frame. Keep the sheet rectangular so rows draw directly.
+        drawerShape = RectangleShape,
     ) {
         Box(
             Modifier
@@ -346,8 +358,9 @@ internal fun AppDrawer(
                                     size = 32.dp,
                                     // The drawer content stays composed while the
                                     // drawer is closed; freeze the robot so it never
-                                    // animates offscreen.
-                                    active = drawerActive,
+                                    // animates offscreen, and freeze it during a list
+                                    // scroll so no tick lands in a scroll frame.
+                                    active = drawerActive && !scrolling,
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
@@ -432,6 +445,7 @@ internal fun AppDrawer(
                     } else {
                         LazyColumn(
                             Modifier.fillMaxSize(),
+                            state = sessionsListState,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         ) {
                             visibleSessions.forEach { (group, sessions) ->
@@ -583,14 +597,22 @@ private fun DrawerPart(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Box(
+    val revealFinished by remember(reveal) {
+        derivedStateOf { reveal.value >= 0.999f }
+    }
+    val revealModifier = if (revealFinished) {
+        // Drop the layer once the entrance has settled. Keeping a graphics
+        // layer around the LazyColumn makes each scroll frame re-upload it.
+        modifier
+    } else {
         modifier.graphicsLayer {
             val start = index * 0.08f
             val progress = ((reveal.value - start) / 0.76f).coerceIn(0f, 1f)
             alpha = progress
             translationX = (1f - progress) * 20.dp.toPx()
-        },
-    ) {
+        }
+    }
+    Box(revealModifier) {
         content()
     }
 }

@@ -8,7 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -163,7 +163,14 @@ fun StateDot(
     }
 }
 
-/** Circular / squircle icon button used in bars and card corners. */
+/**
+ * Circular / squircle icon button used in bars and card corners.
+ *
+ * [pressEffect] adds the press scale and its animation layer. Inside a long
+ * scrolling list each instance costs an animation state, a coroutine and a
+ * graphics layer, so list rows pass `false` and keep a ripple plus click
+ * haptics without paying that per-row animation cost.
+ */
 @Composable
 fun ObsidianIconButton(
     icon: ImageVector,
@@ -177,30 +184,67 @@ fun ObsidianIconButton(
     size: Dp = 40.dp,
     iconSize: Dp = 20.dp,
     shape: Shape = MaterialTheme.shapes.small,
+    pressEffect: Boolean = true,
 ) {
-    val palette = ObsidianTheme.palette
-    Box(
-        modifier = modifier
-            .size(size)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.38f }
-            .clip(shape)
-            .background(container)
-            .then(
-                if (borderColor != null) {
-                    Modifier.border(1.dp, borderColor, shape)
-                } else {
-                    Modifier
-                },
+    if (pressEffect) {
+        // Preserve the original ordering: the alpha layer dims the complete
+        // button, including its background and border.
+        Box(
+            modifier = modifier
+                .size(size)
+                .graphicsLayer { alpha = if (enabled) 1f else 0.38f }
+                .clip(shape)
+                .background(container)
+                .then(
+                    if (borderColor != null) {
+                        Modifier.border(1.dp, borderColor, shape)
+                    } else {
+                        Modifier
+                    },
+                )
+                .pressable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(iconSize),
             )
-            .pressable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(iconSize),
-        )
+        }
+    } else {
+        // No press Animatable and no graphics layer. The regular clickable
+        // overload creates interaction machinery lazily, and haptics run only
+        // after a successful click so a vertical scroll never buzzes.
+        val haptics = LocalHapticFeedback.current
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(shape)
+                .background(container)
+                .then(
+                    if (borderColor != null) {
+                        Modifier.border(1.dp, borderColor, shape)
+                    } else {
+                        Modifier
+                    },
+                )
+                .clickable(
+                    enabled = enabled,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onClick()
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = if (enabled) tint else tint.copy(alpha = tint.alpha * 0.38f),
+                modifier = Modifier.size(iconSize),
+            )
+        }
     }
 }
 

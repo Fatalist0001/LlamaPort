@@ -1048,6 +1048,9 @@ internal fun SessionRow(
                         tint = palette.textMuted,
                         size = 28.dp,
                         iconSize = 14.dp,
+                        // Keep list actions lightweight: no per-button press
+                        // animation state or graphics layer during flings.
+                        pressEffect = false,
                     )
                     ObsidianIconButton(
                         icon = Icons.Outlined.Delete,
@@ -1057,6 +1060,7 @@ internal fun SessionRow(
                         tint = if (active) palette.error.copy(alpha = 0.75f) else palette.textMuted,
                         size = 28.dp,
                         iconSize = 14.dp,
+                        pressEffect = false,
                     )
                 }
             }
