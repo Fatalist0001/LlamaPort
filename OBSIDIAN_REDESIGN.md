@@ -7,10 +7,10 @@ inference path, persistence format and user flows stay untouched.
 
 | Area | File | State today |
 |---|---|---|
-| Theme | `ui/theme/Theme.kt`, `ui/theme/Shapes.kt` | Material You dynamic color, indigo fallback, 8/12/16/22/28 radii |
+| Theme | `ui/theme/Theme.kt`, `ui/theme/Shapes.kt` | Fixed Obsidian dark/daylight palettes, 10/14/18/24/28 radii |
 | Motion | `ui/motion/*` | MotionTokens, Reveal, pressable, AnimatedNumber, ReducedMotion, disclosure |
-| Robot | `ui/robot/AsciiRobot.kt`, `RobotAvatar.kt`, `RobotState.kt` | 24×24 ASCII raster of `AppIcons.Robot`, ticker at 13 fps, all states |
-| Home chrome | `HomeChrome.kt` | `TopAppBar`, pill model chip, drawer, empty state with robot + SuggestionChips |
+| Robot | `ui/robot/AsciiRobot.kt`, `RobotPerformance.kt`, `RobotState.kt` | 24×24 ASCII raster of `AppIcons.Robot`, adaptive 60/120 ms ticker, 20 idle actions and 16 reactions |
+| Home chrome | `HomeChrome.kt` | Custom top bar, model chip, optimized drawer, static robot stage and quick-action cards |
 | Chat screen | `ChatScreen.kt` | Scaffold, status strip, M3 input bar, send/stop, drawer sessions |
 | Messages | `ui/chat/Messages.kt` | tonal bubbles, free assistant layout, thinking block, tool block, metrics dialog |
 | Markdown | `Markdown.kt` | small parser, flat code block, no syntax highlight, no copy button |
@@ -26,8 +26,8 @@ Constraints discovered:
 - The streaming answer is deliberately outside `UiState`; the redesign must keep
   token updates local to the message and input bar.
 - `LocalReducedMotion` follows the system animator scale live.
-- The pixel robot is the brand mark and stays; the new home hero adds a separate
-  Obsidian Core composition around it.
+- The pixel robot is the brand mark and stays; the final home hero places it on
+  a static silver precision stage rather than a continuously animated Core.
 
 ## Design system
 
@@ -85,16 +85,16 @@ commit. Functional flows are exercised on the connected device (RMO-NX1).
 | 3. Chat | `d6a6493` | Graphite user bubbles with hairline; free assistant layout with LlamaPort header; Markdown hierarchy, muted syntax highlighting, code surface with language header and copy button; thinking panel with live silver activity and collapse; tool panel; streaming shimmer and cursor; mono metrics and redesigned metrics dialog. |
 | 4. Models | `f1c4381` | Segmented animated RAM panel with legend readouts; technical GGUF cards (size, quant, parameters, vision/audio, mmproj, need, fit, active state); indeterminate load sequence with dimmed siblings and success pulse; load sheet stays open until the result; redesigned memory warning with need/available comparison. |
 | 5. Drawer + settings | `0d24359`, `2947e66` | Layered drawer, robot tile, staged content reveal, active chat silver rail, compact rename/delete, settings card; three Obsidian settings panels, prompt editor, custom sliders/switches/checks/segments, exact mono inputs, animated values, mono backend line. |
-| 6. Polish | `2e7e3d4`, `596fb9f` | Reduced-motion audit, concurrent-animation reduction during streaming, short-screen scrolling for the empty state, light theme pass, device screenshots, signed debug + release builds. |
+| 6. Polish | `2e7e3d4`, `596fb9f`, `2604824`, `af2a9d4` | Reduced-motion and lifecycle audit, adaptive robot ticker, short-screen scrolling, light theme pass, signed builds, and Perfetto-driven drawer scroll optimization. |
 
 ### Design decisions
 
-- **Single identity, two light levels.** The core palette is fixed Obsidian; system dark mode uses it directly. System light mode uses an airy “Obsidian Daylight” ink/silver variant. Code surfaces and the Core stay polished black in both modes.
+- **Single identity, two light levels.** The core palette is fixed Obsidian; system dark mode uses it directly. System light mode uses an airy “Obsidian Daylight” ink/silver variant. Code surfaces and the robot stage retain their graphite/silver identity in both modes.
 - **No second motion system.** All new effects use the existing `MotionTokens`, `Reveal`, `pressable`, `disclosureEnter/Exit` and `LocalReducedMotion`. `SilverPulseOverlay` and the progress/shimmer lines are additional primitives built on the same tokens.
-- **The Core is not a glowing orb.** It is a matte stacked-octagon object (Canvas paths and gradients only, no bitmap/3D dependency), lit by thin silver edge gradients. The pixel robot is the brand seal inside it.
+- **The robot is the hero.** The temporary animated Core was retired. The pixel robot from `main` now sits directly on a static Canvas stage with a silver reflection, precision ring and hairline floor.
 - **Honest metrics.** Prompt progress uses the real processed/total values. Model load has no native percentage, so the loading card and header show an indeterminate silver line, never a fake percent. Generation speed, token counts and RAM values still come from the existing state.
 - **Streaming cost.** The streaming answer remains outside `UiState`. New motion reads animation state in draw phase where possible. During generation only a small header dot, the answer shimmer line and the status shimmer line are continuous; the speed chip and status dots are static. The completion pulse is one-shot.
-- **Reduced Motion.** All infinite decorative motion (Core drift, robot ticker, pulses, shimmers, cursor) is disabled when `LocalReducedMotion` is true; short fades and layout changes remain.
+- **Reduced Motion.** All infinite decorative motion (robot ticker, pulses, shimmers, cursor) is disabled when `LocalReducedMotion` is true; short fades and layout changes remain.
 - **Small screens.** The home composition centers when it fits and becomes vertically scrollable when it does not.
 
 ### Verification performed on the connected device
@@ -115,6 +115,43 @@ commit. Functional flows are exercised on the connected device (RMO-NX1).
 - Light mode: home, models and settings rendered with the Daylight palette; dark restored afterwards.
 - Idle frame check after generation: 14 frames in six seconds (no persistent animation).
 
+### Drawer scroll performance follow-up
+
+Live `gfxinfo` A/B tests initially ruled out `animateItem`, the small drawer robot,
+and the row press animations as the primary cause. A Perfetto trace then exposed
+the actual bottleneck: the rounded full-height `ModalDrawerSheet` forced the
+changing drawer into an **886×2274 offscreen texture**, and that texture was
+uploaded again on nearly every scroll frame.
+
+Commit `af2a9d4` fixes the rendering path without removing chat actions or
+swipe-to-delete:
+
+- the full-height sheet uses a rectangular surface, avoiding the oversized clip layer;
+- staggered `DrawerPart` graphics layers exist only during the entrance animation and
+  are removed as soon as the reveal settles;
+- the 32 dp header robot pauses while the history `LazyColumn` is being dragged or flung;
+- row action buttons retain ripple and click haptics but skip their individual
+  press-scale animation states and graphics layers.
+
+Measured on the only target device, HONOR RMO-NX1, using an R8 release payload
+compiled with ART `speed` mode:
+
+| Metric | Before | Final |
+|---|---:|---:|
+| Janky frames | 10.4–12.5% | **1.7–2.7%** |
+| 50th percentile | 14 ms | **10–12 ms** |
+| 90th percentile | 17–18 ms | **12–14 ms** |
+| 95th percentile | 18–19 ms | **13–15 ms** |
+| 99th percentile | 21–26 ms | **17–18 ms** |
+| Missed Vsync | 0–3 | **0–1** |
+
+Perfetto confirmed the mechanism, not just the visible improvement: average
+`Drawing` time fell from 6.72 to 4.46 ms, `flush commands` from 4.23 to 2.43 ms,
+and main-thread `traversal` from 1.84 to 0.85 ms. The 886×2274 upload disappeared.
+The remaining small 877×454 upload averaged about 0.25 ms and is below the
+threshold that affected scrolling. Device coverage is intentionally limited to
+the single available target handset.
+
 ### Build artifacts and signing
 
 All APKs are signed with the modern APK signature schemes (v2 + v3):
@@ -122,8 +159,9 @@ All APKs are signed with the modern APK signature schemes (v2 + v3):
 - `LlamaPort-debug.apk` — debug build, standard Android debug certificate. Installs over an existing debug-signed install.
 - `LlamaPort-release-debugsigned.apk` — R8/minified release payload, signed with the debug certificate so it updates an existing debug install without wiping app data.
 - `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
+- `LlamaPort-release-official.apk` — byte-for-byte copy of the current official release artifact, kept as an explicit archival/distribution name.
 
-The project build now explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
+All four root artifacts were refreshed after `af2a9d4` (the debug-signed release was built and installed during the performance pass; the debug and official variants were rebuilt afterwards without additional device testing). The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
 
 ## Robot performance (home hero)
 
@@ -140,7 +178,7 @@ Mechanics:
 
 - one 16 fps ticker (~60 ms) drives breathing, cell effects and the scheduler; no 60 fps transitions on home;
 - idle performance runs in `Idle` **and** `Sleeping` (dim body, bright animated eyes/mouth); loading/thinking/generating/error keep their functional overlays;
-- `lively = false` for the 32 dp drawer robot keeps that header calm;
+- `lively = false` for the 32 dp drawer robot keeps that header calm; its base ticker also pauses while the history list scrolls;
 - reduced motion disables the ticker and the whole performance; two home screenshots 2 s apart differ by 0 pixels outside the status bar;
 - the footer drawer robot and all chat avatars are unchanged; no new dependencies or assets.
 
