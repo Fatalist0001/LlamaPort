@@ -175,6 +175,7 @@ internal fun ModelChip(
                 style = EyebrowStyle,
                 color = statusColor.copy(alpha = 0.92f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = state.modelName ?: "Выбрать модель",
@@ -196,14 +197,15 @@ internal fun ModelChip(
 }
 
 /**
- * Custom top bar: menu, technical model module, new chat. It owns the status
- * bar inset and the hairline that separates chrome from content.
+ * Custom top bar: menu, model module, generation settings and new chat. It
+ * owns the status bar inset and the hairline separating chrome from content.
  */
 @Composable
 internal fun ObsidianTopBar(
     state: UiState,
     onMenu: () -> Unit,
     onModelClick: () -> Unit,
+    onGenerationSettings: () -> Unit,
     onNewChat: () -> Unit,
 ) {
     val palette = ObsidianTheme.palette
@@ -243,6 +245,17 @@ internal fun ObsidianTopBar(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
+            ObsidianIconButton(
+                icon = AppIcons.Tune,
+                contentDescription = "Параметры генерации",
+                onClick = onGenerationSettings,
+                container = palette.card,
+                borderColor = palette.hairline,
+                tint = palette.textPrimary,
+                size = 42.dp,
+                iconSize = 20.dp,
+            )
+            Spacer(Modifier.width(8.dp))
             ObsidianIconButton(
                 icon = Icons.Filled.Add,
                 contentDescription = "Новый чат",
@@ -505,7 +518,7 @@ internal fun AppDrawer(
                             }
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                "Настройки",
+                                "Настройки модели",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = palette.textPrimary,
                                 modifier = Modifier.weight(1f),

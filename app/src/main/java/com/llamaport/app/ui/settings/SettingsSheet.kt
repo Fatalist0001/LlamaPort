@@ -134,16 +134,7 @@ private val TOOL_OPTIONS = listOf(
     ToolOption("run_js", "run_js", "JavaScript в QuickJS, таймаут 8 с, память 32 МБ"),
 )
 
-/**
- * Settings surface: three technical Obsidian panels.
- *
- * 1. Поведение — prompt editor, temperature presets, exact sampling controls.
- * 2. Память и скорость — context with a live KV estimate, threads, batches, FA.
- * 3. Продвинутое — mmap, KV type, tools, reload.
- *
- * Ranges, defaults and side effects are unchanged; only the presentation and
- * the interaction feedback are new. Every number field remains editable.
- */
+/** Model-loading settings. Changes take effect only on the next load/reload. */
 @Composable
 internal fun SettingsSheet(
     state: UiState,
@@ -152,34 +143,256 @@ internal fun SettingsSheet(
 ) {
     val palette = ObsidianTheme.palette
     val settings = state.settings
-    var behaviorExpanded by rememberSaveable { mutableStateOf(true) }
     var memoryExpanded by rememberSaveable { mutableStateOf(true) }
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
-    var detailsExpanded by rememberSaveable { mutableStateOf(false) }
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
-    ) {
+    SettingsPage {
         Reveal(index = 0) {
-            Column {
-                Eyebrow(text = "инференс", color = palette.textMuted)
+            SettingsPageHeader(
+                eyebrow = "инференс",
+                title = "Настройки модели",
+                description = "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV-кэша " +
+                    "применяются после следующей загрузки или перезагрузки модели.",
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Reveal(index = 1) {
+            SettingsSection(
+                index = "01",
+                title = "Память и скорость",
+                subtitle = "Контекст, потоки, Flash Attention",
+                expanded = memoryExpanded,
+                onToggle = { memoryExpanded = !memoryExpanded },
+            ) {
+                val kvBytes = kvEstimateBytes(state, settings.contextSize)
+                val kvText = when {
+                    kvBytes != null -> formatSize(kvBytes)
+                    state.modelLoaded -> "≈ ${formatSize(fallbackKvBytes(state, settings.contextSize))}"
+                    else -> "после загрузки модели"
+                }
+                val capText = if (state.modelLoaded && state.modelCap > 0) {
+                    "модель: ${state.modelCap}"
+                } else {
+                    "макс. $CONTEXT_LIMIT"
+                }
+                ContextSlider(
+                    contextSize = settings.contextSize,
+                    description = "$capText · KV-кэш $kvText",
+                    onValueChange = { value -> onUpdate { it.copy(contextSize = value) } },
+                )
+                val exceedsModel = state.modelLoaded && state.modelCap > 0 &&
+                    settings.contextSize > state.modelCap
+                if (exceedsModel || settings.contextSize > 8192) {
+                    Spacer(Modifier.height(6.dp))
+                    Notice(
+                        text = if (exceedsModel) {
+                            "Контекст больше заявленного моделью (${state.modelCap}): качество " +
+                                "может снизиться, а KV-кэш может не поместиться в RAM."
+                        } else {
+                            "Большой контекст увеличивает KV-кэш. Если модель не поместится " +
+                                "в RAM, она может быть выгружена системой."
+                        },
+                        color = palette.error,
+                    )
+                }
+                val needMb = memoryNeedMb(state, settings.contextSize)
                 Spacer(Modifier.height(7.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Eyebrow(text = "оценка памяти", color = palette.textMuted, tick = false)
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        if (needMb > 0) {
+                            "~${formatRam(needMb)} · свободно ${formatRam(state.memAvailableMb)}"
+                        } else {
+                            "появится после выбора модели"
+                        },
+                        style = MonoSmall,
+                        color = if (needMb > 0 && needMb > state.memAvailableMb) {
+                            palette.error
+                        } else {
+                            palette.textSecondary
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                SettingsSlider(
+                    label = "Потоки генерации",
+                    value = settings.threads.toFloat(),
+                    range = 1f..8f,
+                    steps = 6,
+                    display = { it.roundToInt().toString() },
+                    parse = { text -> text.toIntOrNull()?.coerceIn(1, 8)?.toFloat() },
+                    onValueChange = { value ->
+                        onUpdate { it.copy(threads = value.roundToInt().coerceIn(1, 8)) }
+                    },
+                )
+                SettingsSlider(
+                    label = "Потоки промпта",
+                    value = settings.threadsBatch.toFloat(),
+                    range = 1f..8f,
+                    steps = 6,
+                    display = { it.roundToInt().toString() },
+                    parse = { text -> text.toIntOrNull()?.coerceIn(1, 8)?.toFloat() },
+                    onValueChange = { value ->
+                        onUpdate { it.copy(threadsBatch = value.roundToInt().coerceIn(1, 8)) }
+                    },
+                )
+                SettingsSlider(
+                    label = "Пакет промпта",
+                    value = nearestIndex(BATCH_VALUES, settings.nBatch).toFloat(),
+                    range = 0f..BATCH_VALUES.lastIndex.toFloat(),
+                    steps = (BATCH_VALUES.size - 2).coerceAtLeast(0),
+                    display = { index ->
+                        "${BATCH_VALUES[index.roundToInt().coerceIn(0, BATCH_VALUES.lastIndex)]}"
+                    },
+                    parse = { text ->
+                        text.toIntOrNull()
+                            ?.let { nearestIndex(BATCH_VALUES, it) }
+                            ?.toFloat()
+                    },
+                    onValueChange = { index ->
+                        val value = BATCH_VALUES[index.roundToInt().coerceIn(0, BATCH_VALUES.lastIndex)]
+                        onUpdate { it.copy(nBatch = value) }
+                    },
+                )
+                SettingsSlider(
+                    label = "Микробатч",
+                    value = nearestIndex(UBATCH_VALUES, settings.nUbatch).toFloat(),
+                    range = 0f..UBATCH_VALUES.lastIndex.toFloat(),
+                    steps = (UBATCH_VALUES.size - 2).coerceAtLeast(0),
+                    display = { index ->
+                        "${UBATCH_VALUES[index.roundToInt().coerceIn(0, UBATCH_VALUES.lastIndex)]}"
+                    },
+                    parse = { text ->
+                        text.toIntOrNull()
+                            ?.let { nearestIndex(UBATCH_VALUES, it) }
+                            ?.toFloat()
+                    },
+                    onValueChange = { index ->
+                        val value = UBATCH_VALUES[index.roundToInt().coerceIn(0, UBATCH_VALUES.lastIndex)]
+                        onUpdate { it.copy(nUbatch = minOf(value, it.nBatch)) }
+                    },
+                )
+
+                Spacer(Modifier.height(14.dp))
                 Text(
-                    "Настройки",
-                    style = MaterialTheme.typography.headlineSmall,
+                    "Flash Attention",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = palette.textPrimary,
                 )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    "Температура и инструменты применяются сразу; контекст, потоки, " +
-                        "пакеты и Flash Attention — после перезагрузки модели.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.textSecondary,
+                Spacer(Modifier.height(8.dp))
+                FlashAttentionControl(
+                    value = settings.flashAttn,
+                    onChange = { index -> onUpdate { it.copy(flashAttn = index) } },
                 )
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "«Авто» включает внимание с учётом типа KV-кэша; «Вкл» может ускорить " +
+                        "генерацию, «Выкл» — запасной вариант.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textMuted,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Reveal(index = 2) {
+            SettingsSection(
+                index = "02",
+                title = "Продвинутое",
+                subtitle = "mmap и тип KV-кэша",
+                expanded = advancedExpanded,
+                onToggle = { advancedExpanded = !advancedExpanded },
+            ) {
+                SwitchRow(
+                    label = "mmap модели",
+                    description = "Не копировать веса в память целиком; экономит RAM, но файл " +
+                        "должен оставаться на месте.",
+                    checked = settings.useMmap,
+                    onChange = { checked -> onUpdate { it.copy(useMmap = checked) } },
+                )
+                SwitchRow(
+                    label = "KV-кэш q8_0",
+                    description = "Сжимает кэш контекста примерно вдвое (нужен Flash Attention).",
+                    checked = settings.kvType == 1,
+                    onChange = { checked -> onUpdate { it.copy(kvType = if (checked) 1 else 0) } },
+                )
+            }
+        }
+
+        // Keep the reload action reachable even when both sections are folded.
+        Spacer(Modifier.height(16.dp))
+        Reveal(index = 3) {
+            Column {
+                Hairline()
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV применяются " +
+                        "после перезагрузки модели.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.textMuted,
+                )
+                Spacer(Modifier.height(10.dp))
+                ObsidianButton(
+                    text = "Перезагрузить модель",
+                    onClick = onReload,
+                    style = ObsidianButtonStyle.Secondary,
+                    enabled = state.modelLoaded && !state.generating && !state.loadingModel,
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Hairline()
+                Spacer(Modifier.height(10.dp))
+                Eyebrow(text = "бэкенд", color = palette.textMuted, tick = false)
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    state.backendInfo.ifBlank { "llama.cpp" },
+                    style = MonoSmall,
+                    color = palette.textMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Settings captured by the next send request, without reloading the model.
+ * An in-flight answer and its tool rounds continue using their original snapshot.
+ */
+@Composable
+internal fun GenerationSettingsSheet(
+    state: UiState,
+    onUpdate: ((Settings) -> Settings) -> Unit,
+) {
+    val palette = ObsidianTheme.palette
+    val settings = state.settings
+    var behaviorExpanded by rememberSaveable { mutableStateOf(true) }
+    var detailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var toolsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    SettingsPage {
+        Reveal(index = 0) {
+            Column {
+                SettingsPageHeader(
+                    eyebrow = "генерация",
+                    title = "Параметры генерации",
+                    description = "Изменения применяются при следующей отправке сообщения — " +
+                        "без перезагрузки модели.",
+                )
+                if (state.generating) {
+                    Spacer(Modifier.height(8.dp))
+                    Notice(
+                        text = "Текущий ответ и его вызовы инструментов продолжаются " +
+                            "с прежними настройками.",
+                        color = palette.textSecondary,
+                    )
+                }
             }
         }
 
@@ -333,171 +546,11 @@ internal fun SettingsSheet(
         Reveal(index = 2) {
             SettingsSection(
                 index = "02",
-                title = "Память и скорость",
-                subtitle = "Контекст, потоки, Flash Attention",
-                expanded = memoryExpanded,
-                onToggle = { memoryExpanded = !memoryExpanded },
+                title = "Инструменты",
+                subtitle = "Разрешения для следующего запроса",
+                expanded = toolsExpanded,
+                onToggle = { toolsExpanded = !toolsExpanded },
             ) {
-                val kvBytes = kvEstimateBytes(state, settings.contextSize)
-                val kvText = when {
-                    kvBytes != null -> formatSize(kvBytes)
-                    state.modelLoaded -> "≈ ${formatSize(fallbackKvBytes(state, settings.contextSize))}"
-                    else -> "после загрузки модели"
-                }
-                val capText = if (state.modelLoaded && state.modelCap > 0) {
-                    "модель: ${state.modelCap}"
-                } else {
-                    "макс. $CONTEXT_LIMIT"
-                }
-                ContextSlider(
-                    contextSize = settings.contextSize,
-                    description = "$capText · KV-кэш $kvText",
-                    onValueChange = { value -> onUpdate { it.copy(contextSize = value) } },
-                )
-                val exceedsModel = state.modelLoaded && state.modelCap > 0 &&
-                    settings.contextSize > state.modelCap
-                if (exceedsModel || settings.contextSize > 8192) {
-                    Spacer(Modifier.height(6.dp))
-                    Notice(
-                        text = if (exceedsModel) {
-                            "Контекст больше заявленного моделью (${state.modelCap}): качество " +
-                                "может снизиться, а KV-кэш может не поместиться в RAM."
-                        } else {
-                            "Большой контекст увеличивает KV-кэш. Если модель не поместится " +
-                                "в RAM, она может быть выгружена системой."
-                        },
-                        color = palette.error,
-                    )
-                }
-                val needMb = memoryNeedMb(state, settings.contextSize)
-                Spacer(Modifier.height(7.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Eyebrow(text = "оценка памяти", color = palette.textMuted, tick = false)
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        if (needMb > 0) {
-                            "~${formatRam(needMb)} · свободно ${formatRam(state.memAvailableMb)}"
-                        } else {
-                            "появится после выбора модели"
-                        },
-                        style = MonoSmall,
-                        color = if (needMb > 0 && needMb > state.memAvailableMb) {
-                            palette.error
-                        } else {
-                            palette.textSecondary
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                Spacer(Modifier.height(16.dp))
-                SettingsSlider(
-                    label = "Потоки генерации",
-                    value = settings.threads.toFloat(),
-                    range = 1f..8f,
-                    steps = 6,
-                    display = { it.roundToInt().toString() },
-                    parse = { text -> text.toIntOrNull()?.coerceIn(1, 8)?.toFloat() },
-                    onValueChange = { value ->
-                        onUpdate { it.copy(threads = value.roundToInt().coerceIn(1, 8)) }
-                    },
-                )
-                SettingsSlider(
-                    label = "Потоки промпта",
-                    value = settings.threadsBatch.toFloat(),
-                    range = 1f..8f,
-                    steps = 6,
-                    display = { it.roundToInt().toString() },
-                    parse = { text -> text.toIntOrNull()?.coerceIn(1, 8)?.toFloat() },
-                    onValueChange = { value ->
-                        onUpdate { it.copy(threadsBatch = value.roundToInt().coerceIn(1, 8)) }
-                    },
-                )
-                SettingsSlider(
-                    label = "Пакет промпта",
-                    value = nearestIndex(BATCH_VALUES, settings.nBatch).toFloat(),
-                    range = 0f..BATCH_VALUES.lastIndex.toFloat(),
-                    steps = (BATCH_VALUES.size - 2).coerceAtLeast(0),
-                    display = { index ->
-                        "${BATCH_VALUES[index.roundToInt().coerceIn(0, BATCH_VALUES.lastIndex)]}"
-                    },
-                    parse = { text ->
-                        text.toIntOrNull()
-                            ?.let { nearestIndex(BATCH_VALUES, it) }
-                            ?.toFloat()
-                    },
-                    onValueChange = { index ->
-                        val value = BATCH_VALUES[index.roundToInt().coerceIn(0, BATCH_VALUES.lastIndex)]
-                        onUpdate { it.copy(nBatch = value) }
-                    },
-                )
-                SettingsSlider(
-                    label = "Микробатч",
-                    value = nearestIndex(UBATCH_VALUES, settings.nUbatch).toFloat(),
-                    range = 0f..UBATCH_VALUES.lastIndex.toFloat(),
-                    steps = (UBATCH_VALUES.size - 2).coerceAtLeast(0),
-                    display = { index ->
-                        "${UBATCH_VALUES[index.roundToInt().coerceIn(0, UBATCH_VALUES.lastIndex)]}"
-                    },
-                    parse = { text ->
-                        text.toIntOrNull()
-                            ?.let { nearestIndex(UBATCH_VALUES, it) }
-                            ?.toFloat()
-                    },
-                    onValueChange = { index ->
-                        val value = UBATCH_VALUES[index.roundToInt().coerceIn(0, UBATCH_VALUES.lastIndex)]
-                        onUpdate { it.copy(nUbatch = minOf(value, it.nBatch)) }
-                    },
-                )
-
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "Flash Attention",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.textPrimary,
-                )
-                Spacer(Modifier.height(8.dp))
-                FlashAttentionControl(
-                    value = settings.flashAttn,
-                    onChange = { index -> onUpdate { it.copy(flashAttn = index) } },
-                )
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    "«Авто» включает внимание с учётом типа KV-кэша; «Вкл» может ускорить " +
-                        "генерацию, «Выкл» — запасной вариант.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.textMuted,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Reveal(index = 3) {
-            SettingsSection(
-                index = "03",
-                title = "Продвинутое",
-                subtitle = "mmap, KV-кэш, инструменты",
-                expanded = advancedExpanded,
-                onToggle = { advancedExpanded = !advancedExpanded },
-            ) {
-                SwitchRow(
-                    label = "mmap модели",
-                    description = "Не копировать веса в память целиком; экономит RAM, но файл " +
-                        "должен оставаться на месте.",
-                    checked = settings.useMmap,
-                    onChange = { checked -> onUpdate { it.copy(useMmap = checked) } },
-                )
-                SwitchRow(
-                    label = "KV-кэш q8_0",
-                    description = "Сжимает кэш контекста примерно вдвое (нужен Flash Attention).",
-                    checked = settings.kvType == 1,
-                    onChange = { checked -> onUpdate { it.copy(kvType = if (checked) 1 else 0) } },
-                )
-
-                Spacer(Modifier.height(10.dp))
-                Hairline()
-                Spacer(Modifier.height(6.dp))
                 SwitchRow(
                     label = "Разрешить инструменты",
                     description = "Модель сможет вызывать калькулятор, файлы в песочнице и другие " +
@@ -545,38 +598,44 @@ internal fun SettingsSheet(
                         )
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-                Hairline()
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV применяются " +
-                        "после перезагрузки модели.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.textMuted,
-                )
-                Spacer(Modifier.height(10.dp))
-                ObsidianButton(
-                    text = "Перезагрузить модель",
-                    onClick = onReload,
-                    style = ObsidianButtonStyle.Secondary,
-                    enabled = state.modelLoaded && !state.generating && !state.loadingModel,
-                )
-
-                Spacer(Modifier.height(16.dp))
-                Hairline()
-                Spacer(Modifier.height(10.dp))
-                Eyebrow(text = "бэкенд", color = palette.textMuted, tick = false)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    state.backendInfo.ifBlank { "llama.cpp" },
-                    style = MonoSmall,
-                    color = palette.textMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsPageHeader(
+    eyebrow: String,
+    title: String,
+    description: String,
+) {
+    val palette = ObsidianTheme.palette
+    Column {
+        Eyebrow(text = eyebrow, color = palette.textMuted)
+        Spacer(Modifier.height(7.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = palette.textPrimary,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            description,
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.textSecondary,
+        )
     }
 }
 

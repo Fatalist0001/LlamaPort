@@ -131,6 +131,7 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
+import com.llamaport.app.ui.settings.GenerationSettingsSheet
 import com.llamaport.app.ui.settings.SettingsSheet
 import com.llamaport.app.ui.theme.EyebrowStyle
 import com.llamaport.app.ui.theme.MonoNumeric
@@ -145,12 +146,15 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
 
+/** Only one settings destination can be visible at a time. */
+private enum class SettingsScreen { Model, Generation }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LlamaPortApp(viewModel: ChatViewModel) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showSettings by remember { mutableStateOf(false) }
+    var settingsScreen by remember { mutableStateOf<SettingsScreen?>(null) }
     var showModels by remember { mutableStateOf(false) }
     var sheetLoadName by remember { mutableStateOf<String?>(null) }
     var emptyShakeTick by remember { mutableIntStateOf(0) }
@@ -207,6 +211,14 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     }
 
     val palette = ObsidianTheme.palette
+    val onOpenModels: () -> Unit = {
+        settingsScreen = null
+        showModels = true
+    }
+    val onOpenSettings: (SettingsScreen) -> Unit = { destination ->
+        showModels = false
+        settingsScreen = destination
+    }
 
     ObsidianBackground(Modifier.fillMaxSize()) {
     ModalNavigationDrawer(
@@ -252,7 +264,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 onRenameSession = viewModel::renameSession,
                 onOpenSettings = {
                     scope.launch { drawerState.close() }
-                    showSettings = true
+                    onOpenSettings(SettingsScreen.Model)
                 },
             )
         },
@@ -265,7 +277,8 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 ObsidianTopBar(
                     state = state,
                     onMenu = { scope.launch { drawerState.open() } },
-                    onModelClick = { showModels = true },
+                    onModelClick = onOpenModels,
+                    onGenerationSettings = { onOpenSettings(SettingsScreen.Generation) },
                     onNewChat = onNewChat,
                 )
             },
@@ -356,7 +369,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                     HomeEmptyState(
                         state = state,
                         shakeTick = emptyShakeTick,
-                        onChooseModel = { showModels = true },
+                        onChooseModel = onOpenModels,
                         onSuggestion = viewModel::onInputChange,
                     )
                 } else {
@@ -396,9 +409,9 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
         }
     }
 
-    if (showSettings) {
+    settingsScreen?.let { screen ->
         ModalBottomSheet(
-            onDismissRequest = { showSettings = false },
+            onDismissRequest = { settingsScreen = null },
             sheetState = sheetState,
             containerColor = ObsidianTheme.palette.surface,
             scrimColor = if (ObsidianTheme.palette.isDark) {
@@ -408,11 +421,21 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
             },
             shape = MaterialTheme.shapes.extraLarge,
         ) {
-            SettingsSheet(
-                state = state,
-                onUpdate = viewModel::updateSettings,
-                onReload = viewModel::reloadModel,
-            )
+            // Both destinations edit the same Settings value. A key prevents
+            // local draft/focus/disclosure state leaking between their UIs.
+            androidx.compose.runtime.key(screen) {
+                when (screen) {
+                    SettingsScreen.Model -> SettingsSheet(
+                        state = state,
+                        onUpdate = viewModel::updateSettings,
+                        onReload = viewModel::reloadModel,
+                    )
+                    SettingsScreen.Generation -> GenerationSettingsSheet(
+                        state = state,
+                        onUpdate = viewModel::updateSettings,
+                    )
+                }
+            }
         }
     }
 

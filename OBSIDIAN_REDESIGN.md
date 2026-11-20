@@ -15,7 +15,7 @@ inference path, persistence format and user flows stay untouched.
 | Messages | `ui/chat/Messages.kt` | tonal bubbles, free assistant layout, thinking block, tool block, metrics dialog |
 | Markdown | `Markdown.kt` | small parser, flat code block, no syntax highlight, no copy button |
 | Models | `ui/models/ModelsSheet.kt` | RAM bar, swipe cards, fit label, projectors |
-| Settings | `ui/settings/SettingsSheet.kt` | 3 disclosures, M3 sliders/switches/chips, exact number fields |
+| Settings | `ui/settings/SettingsSheet.kt` | Separate model-load and next-request generation panels, shared Obsidian controls and exact number fields |
 | State | `ChatViewModel.kt`, `ChatStore.kt` | `UiState`, `StreamingAnswer` (live text outside state), no load progress |
 
 Constraints discovered:
@@ -152,6 +152,67 @@ The remaining small 877×454 upload averaged about 0.25 ms and is below the
 threshold that affected scrolling. Device coverage is intentionally limited to
 the single available target handset.
 
+### Separate model and generation settings
+
+The drawer entry is now **«Настройки модели»**; a new tuning-sliders button
+immediately left of the top-bar **«+»** opens **«Параметры генерации»** on both
+home and chat. Each destination is its own scrollable bottom-sheet screen.
+One nullable settings destination prevents overlapping model/generation panels;
+opening the model chooser closes the settings destination, and vice versa.
+
+The existing `Settings` object and `updateSettings` remain the only source of
+truth. No native, IPC, chat-persistence or cache-fingerprint changes are needed:
+
+| Applies on load/reload only | Applies to the next new request without reload |
+|---|---|
+| `contextSize` | `systemPrompt` |
+| `threads`, `threadsBatch` | `temperature`, `topP`, `topK` and temperature presets |
+| `nBatch`, `nUbatch` | `maxTokens`, `thinkingBudget` |
+| `flashAttn`, `useMmap`, `kvType` | `toolsEnabled`, `enabledTools`, `httpToolEnabled` |
+
+The model screen retains the context/RAM estimate, memory warnings, mmap/KV
+controls and backend information. Its reload action is outside collapsed panels
+and is disabled when the model is absent, loading or generating. Editing a load
+setting does not automatically reload the model. Thread counts, including
+«Потоки генерации», stay here because the current IPC passes them only to `load`.
+
+The generation screen retains the prompt editor, presets, exact sampling and
+limit controls, and a separate tools disclosure. It is available without a loaded
+model and while an answer is running. Its notice says settings apply to the
+**next request**: the whole current answer, including all tool rounds, keeps its
+original settings snapshot. There is no reload button on this screen.
+
+Both screens reuse the original private controls, ranges, defaults, rounding,
+reduced-motion behavior and exact-number commits. The existing normalization
+`nUbatch <= nBatch` and the joint `http_get` permission/enabled-tool update are
+preserved. Splitting the UI does not add per-chat settings or disk persistence.
+
+Verification for the split:
+
+- Static assertions confirmed all 8 load-only and all 9 next-request fields are
+  exclusive to their intended screen. Existing private controls and helper
+  implementations are byte-identical to the preceding revision.
+- Both Kotlin variants, debug packaging, R8 release packaging and release vital
+  lint passed. Independent source review found no blocking regressions.
+- USB smoke tests on HONOR RMO-NX1 exercised both entries, panel disclosure and
+  closing, the generation presets, the separate eight-tool list, precise token
+  entry (73 stays 73 rather than snapping to the slider step), and persistence
+  of changed values across closing/reopening the panels within the ViewModel.
+- Reducing the prompt batch from 512 to 64 also reduced the microbatch to 64;
+  the reload action remained accessible with both model sections collapsed and
+  was disabled without a loaded model.
+- With the existing small Qwen model loaded once, the first test request used
+  `maxNew=512`; changing the generation limit made the next request use
+  `maxNew=64`. No load/reload call occurred during that change, and the inference
+  process stayed the same. The generation screen also opened during an answer
+  and showed the notice about retaining the current request's settings snapshot.
+- The final release UI was checked in dark and daylight themes, with reduced
+  motion and 1.3x font scaling. The top-bar status now ellipsizes like the model
+  filename. Device font scale, animation scale and night mode were restored.
+- Existing user chats were neither deleted nor renamed. Only the uniquely
+  identified temporary four-message test chat was removed, and the previously
+  selected user chat was restored. The final compatible release APK was installed.
+
 ### Build artifacts and signing
 
 All APKs are signed with the modern APK signature schemes (v2 + v3):
@@ -161,7 +222,7 @@ All APKs are signed with the modern APK signature schemes (v2 + v3):
 - `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
 - `LlamaPort-release-official.apk` — byte-for-byte copy of the current official release artifact, kept as an explicit archival/distribution name.
 
-All four root artifacts were refreshed after `af2a9d4` (the debug-signed release was built and installed during the performance pass; the debug and official variants were rebuilt afterwards without additional device testing). The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
+All four root artifacts include the drawer performance fix and the settings-screen split. Debug and R8 debug-signed release were rebuilt from the final UI source; the compatible release was installed and smoke-tested over USB. The official release was packaged with the project key, and its explicit official copy was verified byte-for-byte identical. All four artifacts passed v2/v3 signature verification. Official-release installation over the debug-signed app was not attempted because the certificates differ. The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
 
 ## Robot performance (home hero)
 

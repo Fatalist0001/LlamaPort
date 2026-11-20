@@ -41,6 +41,30 @@ object AppIcons {
         }.build()
     }
 
+    /** Three tuning sliders, distinct from the model-settings gear. */
+    val Tune: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Tune",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                // Each rail stops at its slider so the handle stays legible.
+                moveTo(3f, 5f); lineTo(7f, 5f); lineTo(7f, 7f); lineTo(3f, 7f); close()
+                moveTo(11f, 5f); lineTo(21f, 5f); lineTo(21f, 7f); lineTo(11f, 7f); close()
+                moveTo(7f, 3f); lineTo(11f, 3f); lineTo(11f, 9f); lineTo(7f, 9f); close()
+                moveTo(3f, 11f); lineTo(14f, 11f); lineTo(14f, 13f); lineTo(3f, 13f); close()
+                moveTo(18f, 11f); lineTo(21f, 11f); lineTo(21f, 13f); lineTo(18f, 13f); close()
+                moveTo(14f, 9f); lineTo(18f, 9f); lineTo(18f, 15f); lineTo(14f, 15f); close()
+                moveTo(3f, 17f); lineTo(7f, 17f); lineTo(7f, 19f); lineTo(3f, 19f); close()
+                moveTo(11f, 17f); lineTo(21f, 17f); lineTo(21f, 19f); lineTo(11f, 19f); close()
+                moveTo(7f, 15f); lineTo(11f, 15f); lineTo(11f, 21f); lineTo(7f, 21f); close()
+            }
+        }.build()
+    }
+
     val Stop: ImageVector by lazy {
         ImageVector.Builder(
             name = "Stop",
