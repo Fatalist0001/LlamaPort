@@ -14,7 +14,8 @@ inference path, persistence format and user flows stay untouched.
 | Chat screen | `ChatScreen.kt` | Scaffold, status strip, M3 input bar, send/stop, drawer sessions |
 | Messages | `ui/chat/Messages.kt` | tonal bubbles, free assistant layout, thinking block, tool block, metrics dialog |
 | Markdown | `Markdown.kt` | small parser, flat code block, no syntax highlight, no copy button |
-| Models | `ui/models/ModelsSheet.kt` | RAM bar, swipe cards, fit label, projectors |
+| Models | `ui/models/ModelsSheet.kt`, `ui/models/CloudModels.kt` | RAM bar, swipe cards, fit label, projectors; cloud provider block and editor |
+| Cloud | `cloud/CloudModels.kt`, `CloudWire.kt`, `CloudClient.kt`, `CloudStore.kt` | OpenAI-compatible providers, SSE streaming, capability negotiation, JVM tests |
 | Settings | `ui/settings/SettingsSheet.kt` | Separate model-load and next-request generation panels, shared Obsidian controls and exact number fields |
 | State | `ChatViewModel.kt`, `ChatStore.kt` | `UiState`, `StreamingAnswer` (live text outside state), no load progress |
 
@@ -251,6 +252,61 @@ the system prompt merged into the user turn; a ChatML template produced
 confirming the base-cache guard. Device re-testing of Gemma generation is still
 pending because the phone was disconnected during this change.
 
+### Cloud providers beside local models
+
+The model list now has two blocks: local GGUF files and OpenAI-compatible
+providers. Selecting a remote model is the "load" action; it unloads any local
+model first so RAM is not held by weights nobody uses, and the model chip shows
+`облако` instead of `готова`.
+
+Design decisions worth recording:
+
+- **Network lives in the UI process.** Cloud inference is HTTP, not native
+  memory, so `:llm`, its AIDL surface, the native libraries and the base-prompt
+  cache stay untouched. The client is `HttpURLConnection` + `org.json`: no new
+  runtime dependency, and the APK grew by roughly 50 KB of code.
+- **Tools stay prompt-based.** The existing `<tool_call>` protocol works for
+  local and remote models alike, so the six-round tool loop in `send()` is
+  unchanged and no provider-specific function-calling JSON is needed. Cloud
+  messages are mapped from the same role/content turns the local path renders
+  through Jinja; a `tool` result becomes a `user` turn with its
+  "Tool result (name):" prefix because `role: tool` requires a `tool_call_id`
+  that this scheme does not have.
+- **Capabilities are negotiated, not assumed.** OpenAI-compatible APIs do not
+  advertise which optional fields they accept. The app sends the provider
+  profile, and a 400/422 whose body names a field we sent (and carries a
+  rejection phrase) drops exactly that field and retries, at most three times:
+  `top_k` off, `temperature`/`top_p` off, `max_tokens` → `max_completion_tokens`
+  → omitted, `stream` off. An unattributable error is shown verbatim instead of
+  being guessed at. The learned profile is persisted, so the next launch starts
+  correct; the same state can be toggled by hand in "Совместимость API".
+- **"Проверить API" is the observability path.** Two one-token requests
+  (non-streamed and streamed) produce a per-parameter report and store the
+  result. Without a key on the build machine this is the only way to see what a
+  given provider actually accepts, so the report is part of the UI rather than
+  a debug log.
+- **Model discovery has a manual fallback.** `GET /models` fills the list; when
+  a provider does not implement it (or answers with HTML/401), the editor keeps
+  a manual id field, because "the API did not return a list" must not block the
+  feature. A bare host is retried once with `/v1` and the corrected base URL is
+  adopted.
+- **Keys stay on the device.** Providers are stored in `filesDir/cloud.json`
+  (atomic write, like sessions). The file is excluded from Android backup and
+  device transfer; keys are masked in the UI, never logged, and the editor warns
+  when a plain `http://` endpoint is used.
+- **Text only in this version.** Attachments stay a local/mmproj feature; the
+  cloud path sends no media and the attach button is hidden when a remote model
+  is active. `contextSize`, threads, batches, Flash Attention, mmap and the KV
+  cache are local-only and the model settings sheet says so.
+
+Verification available without a device: 43 JVM tests cover URL normalisation,
+request building, SSE decoding (byte-split buffers, CRLF, keep-alives, non-SSE
+fallback), the downgrade negotiation (including the max-tokens chain), model-list
+shapes, provider-store round trips and key masking, and the full client is driven
+through a scripted transport for streaming, cancellation and the probe report.
+Device testing of a real provider is still pending because the phone was
+disconnected.
+
 ### Build artifacts and signing
 
 All APKs are signed with the modern APK signature schemes (v2 + v3):
@@ -260,7 +316,7 @@ All APKs are signed with the modern APK signature schemes (v2 + v3):
 - `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
 - `LlamaPort-release-official.apk` — byte-for-byte copy of the current official release artifact, kept as an explicit archival/distribution name.
 
-All four root artifacts include the drawer performance fix, the settings-screen split and the Jinja chat-template engine. The debug and R8 debug-signed release were rebuilt from the final source; the compatible release was installed and smoke-tested over USB before the template change, so the template change itself has only host-level and build-level verification so far. The official release was packaged with the project key, and its explicit official copy was verified byte-for-byte identical. All four artifacts passed v2/v3 signature verification, and both release variants carry identical non-signature payloads. Native library sizes now include `libllama-common.so`, which is why the release APK grew from about 11.7 MB to about 16.4 MB. Official-release installation over the debug-signed app was not attempted because the certificates differ. The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
+All four root artifacts include the drawer performance fix, the settings-screen split, the Jinja chat-template engine and the cloud-provider layer. The debug and R8 debug-signed release were rebuilt from the final source; the compatible release was installed and smoke-tested over USB before the template change, so the template change itself has only host-level and build-level verification so far. The official release was packaged with the project key, and its explicit official copy was verified byte-for-byte identical. All four artifacts passed v2/v3 signature verification, and both release variants carry identical non-signature payloads. Native library sizes now include `libllama-common.so`, which is why the release APK grew from about 11.7 MB to about 16.4 MB; the cloud UI and client added about 50 KB on top (release 16,466,073 bytes, debug 25,281,096 bytes). Official-release installation over the debug-signed app was not attempted because the certificates differ. The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
 
 ## Robot performance (home hero)
 
