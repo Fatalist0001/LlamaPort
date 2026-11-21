@@ -101,5 +101,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // Pure JVM tests for the cloud layer (wire format, SSE decoding, capability
+    // negotiation, provider store). The Android SDK stubs org.json, so the real
+    // implementation is added for the test runtime only.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

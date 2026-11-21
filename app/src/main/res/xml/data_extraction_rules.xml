@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API keys must never leave the device: cloud.json is excluded from backup
+     and from device-to-device transfer (Android 12+). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="cloud.json" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="cloud.json" />
+    </device-transfer>
+</data-extraction-rules>
