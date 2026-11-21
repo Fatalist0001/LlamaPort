@@ -213,6 +213,44 @@ Verification for the split:
   identified temporary four-message test chat was removed, and the previously
   selected user chat was restored. The final compatible release APK was installed.
 
+### Chat templates from the model, not a guess
+
+The prompt used to be rendered by `llama_chat_apply_template`, which only
+recognises a fixed list of known formats and silently falls back to ChatML.
+Gemma exposed the consequence live: it answered `2+2` with `4<|im_end|>` and kept
+generating fake `user`/`assistant` turns, because it was fed a ChatML transcript
+it does not use. The same class of bug was possible on any model whose template
+was not in that list.
+
+The prompt is now rendered by llama.cpp's Jinja engine (`common/chat`), using the
+template stored in the GGUF itself:
+
+- `common/chat` and its Jinja runtime are built into `libllama-common.so`,
+  packaged in the APK. It added about 4.7 MB to the release APK.
+- `common_chat_templates_init(model, "")` builds the template once per loaded
+  model from `tokenizer.chat_template`; the engine is released with the model.
+- `applyTemplate` renders the conversation through that engine, so system
+  merging, message alternation, the generation prompt and `enable_thinking` are
+  the model's own rules. The manual `think` suffix rewriting now only runs on
+  the legacy fallback path.
+- BOS is emitted exactly once: when the vocab asks the tokenizer to add BOS, the
+  prompt is re-rendered with `add_bos` set so the template does not emit a second
+  copy.
+- The legacy matcher remains only as a fallback when a template is missing or
+  cannot be rendered; a failure is logged instead of silently changing format.
+- When a template cannot represent a separate system block (Gemma merges it into
+  the first user message), the system-only base prompt renders empty, so the base
+  prompt cache disables itself instead of caching a fragment that is not a real
+  prefix.
+
+Verification available without a device: a host probe linked against the same
+`libllama-common.so` rendered sample conversations. Gemma produced
+`<start_of_turn>user ... <end_of_turn>` followed by `<start_of_turn>model`, with
+the system prompt merged into the user turn; a ChatML template produced
+`<|im_start|>` blocks as before. The system-only Gemma render came back empty,
+confirming the base-cache guard. Device re-testing of Gemma generation is still
+pending because the phone was disconnected during this change.
+
 ### Build artifacts and signing
 
 All APKs are signed with the modern APK signature schemes (v2 + v3):
@@ -222,7 +260,7 @@ All APKs are signed with the modern APK signature schemes (v2 + v3):
 - `LlamaPort-release.apk` — R8/minified release payload signed with the project release key (`CN=LlamaPort`) for distribution.
 - `LlamaPort-release-official.apk` — byte-for-byte copy of the current official release artifact, kept as an explicit archival/distribution name.
 
-All four root artifacts include the drawer performance fix and the settings-screen split. Debug and R8 debug-signed release were rebuilt from the final UI source; the compatible release was installed and smoke-tested over USB. The official release was packaged with the project key, and its explicit official copy was verified byte-for-byte identical. All four artifacts passed v2/v3 signature verification. Official-release installation over the debug-signed app was not attempted because the certificates differ. The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
+All four root artifacts include the drawer performance fix, the settings-screen split and the Jinja chat-template engine. The debug and R8 debug-signed release were rebuilt from the final source; the compatible release was installed and smoke-tested over USB before the template change, so the template change itself has only host-level and build-level verification so far. The official release was packaged with the project key, and its explicit official copy was verified byte-for-byte identical. All four artifacts passed v2/v3 signature verification, and both release variants carry identical non-signature payloads. Native library sizes now include `libllama-common.so`, which is why the release APK grew from about 11.7 MB to about 16.4 MB. Official-release installation over the debug-signed app was not attempted because the certificates differ. The project build explicitly enables v2/v3 signing in `app/build.gradle.kts`; some vendor installers labelled the older v2-only debug package as “not signed”.
 
 ## Robot performance (home hero)
 

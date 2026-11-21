@@ -19,6 +19,12 @@ endif()
 if (NOT DEFINED MTMD_LIB)
     message(FATAL_ERROR "MTMD_LIB is not set")
 endif()
+if (NOT DEFINED COMMON_INCLUDE_DIR)
+    message(FATAL_ERROR "COMMON_INCLUDE_DIR is not set")
+endif()
+if (NOT DEFINED COMMON_LIB)
+    message(FATAL_ERROR "COMMON_LIB is not set")
+endif()
 
 add_library(llamaport SHARED llama_jni.cpp)
 
@@ -26,6 +32,7 @@ target_include_directories(llamaport PRIVATE
     ${LLAMA_INCLUDE_DIR}
     ${GGML_INCLUDE_DIR}
     ${MTMD_INCLUDE_DIR}
+    ${COMMON_INCLUDE_DIR}
 )
 
 target_compile_options(llamaport PRIVATE
@@ -38,6 +45,7 @@ target_compile_options(llamaport PRIVATE
 target_link_libraries(llamaport PRIVATE
     ${LLAMA_LIB}
     ${MTMD_LIB}
+    ${COMMON_LIB}
     log
 )
 

@@ -22,6 +22,7 @@
 #include "llama.h"
 #include "mtmd.h"
 #include "mtmd-helper.h"
+#include "chat.h"
 
 #define TAG "LlamaJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -51,6 +52,10 @@ struct Session {
     const llama_vocab * vocab   = nullptr;
     mtmd_context      * mctx    = nullptr;
     std::string         chat_template;
+    // Rendered from the template stored in the GGUF by llama.cpp's Jinja
+    // engine, so every model gets its own chat format instead of a guess.
+    common_chat_templates_ptr chat_templates;
+    bool                chat_template_explicit = false;
     std::atomic<bool>   cancel{false};
     std::atomic<bool>   busy{false};
     bool                use_mmap = true;
@@ -727,6 +732,20 @@ static jlong load_model_impl(
     if (tmpl != nullptr) {
         s->chat_template = tmpl;
     }
+    // Build the Jinja engine from the model metadata once per loaded model.
+    // Empty override means "use the template shipped inside the GGUF".
+    try {
+        s->chat_templates = common_chat_templates_init(s->model, "");
+        if (s->chat_templates) {
+            s->chat_template_explicit = common_chat_templates_was_explicit(s->chat_templates.get());
+            LOGI("chat template: %s (%zu bytes)",
+                 s->chat_template_explicit ? "from model" : "built-in fallback",
+                 s->chat_template.size());
+        }
+    } catch (const std::exception & e) {
+        LOGE("chat template init failed: %s", e.what());
+        s->chat_templates.reset();
+    }
 
     if (!mmproj_path.empty()) {
         mtmd_context_params mp = mtmd_context_params_default();
@@ -1080,10 +1099,8 @@ Java_com_llamaport_app_LlamaBridge_applyTemplate(
 
     std::vector<std::string> role_store;
     std::vector<std::string> content_store;
-    std::vector<llama_chat_message> messages;
     role_store.reserve(static_cast<size_t>(n));
     content_store.reserve(static_cast<size_t>(n));
-    messages.reserve(static_cast<size_t>(n));
 
     for (jsize i = 0; i < n; ++i) {
         auto * jr = static_cast<jstring>(env->GetObjectArrayElement(roles, i));
@@ -1093,6 +1110,46 @@ Java_com_llamaport_app_LlamaBridge_applyTemplate(
         if (jr != nullptr) env->DeleteLocalRef(jr);
         if (jc != nullptr) env->DeleteLocalRef(jc);
     }
+    const bool generation_prompt = add_assistant != 0;
+
+    // Preferred path: render with the template stored inside the GGUF through
+    // llama.cpp's Jinja engine, so each model keeps its own chat format instead
+    // of a guessed one.
+    if (s->chat_templates) {
+        try {
+            common_chat_templates_inputs inputs;
+            inputs.use_jinja             = true;
+            inputs.add_generation_prompt = generation_prompt;
+            inputs.enable_thinking       = enable_thinking != 0;
+            inputs.messages.reserve(static_cast<size_t>(n));
+            for (jsize i = 0; i < n; ++i) {
+                common_chat_msg msg;
+                msg.role    = role_store[static_cast<size_t>(i)];
+                msg.content = content_store[static_cast<size_t>(i)];
+                inputs.messages.push_back(std::move(msg));
+            }
+            common_chat_params params =
+                common_chat_templates_apply(s->chat_templates.get(), inputs);
+            if (llama_vocab_get_add_bos(s->vocab)) {
+                // The prompt tokenizer adds BOS from the vocab. Re-render with
+                // add_bos set so the template does not emit a second copy.
+                inputs.add_bos = true;
+                params = common_chat_templates_apply(s->chat_templates.get(), inputs);
+            }
+            const std::string result = params.prompt.str();
+            if (!result.empty()) {
+                return make_bytes(env, result.data(), result.size());
+            }
+            LOGE("chat template produced an empty prompt, falling back");
+        } catch (const std::exception & e) {
+            LOGE("chat template apply failed: %s, falling back", e.what());
+        }
+    }
+
+    // Fallback for models without a usable template: the legacy matcher, which
+    // only recognises a fixed set of formats.
+    std::vector<llama_chat_message> messages;
+    messages.reserve(static_cast<size_t>(n));
     for (jsize i = 0; i < n; ++i) {
         messages.push_back(llama_chat_message{role_store[static_cast<size_t>(i)].c_str(),
                                               content_store[static_cast<size_t>(i)].c_str()});

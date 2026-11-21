@@ -16,7 +16,7 @@ Android-порт [llama.cpp](https://github.com/ggml-org/llama.cpp) с граф�
   - `Thinking.kt` — разбор блоков размышлений.
   - `LlamaBridge.kt` — JNI-мост.
   - `src/main/cpp/llama_jni.cpp` — нативная обёртка над C API llama.cpp и `libmtmd`.
-- `scripts/build-native.sh` — кросс-сборка `libllama.so`, `libggml*.so`, `libmtmd.so`, `libquickjs-jni.so` и `libllamaport.so` под `arm64-v8a`.
+- `scripts/build-native.sh` — кросс-сборка `libllama.so`, `libllama-common.so`, `libggml*.so`, `libmtmd.so`, `libquickjs-jni.so` и `libllamaport.so` под `arm64-v8a`.
 - `scripts/build-apk.sh` — сборка debug APK.
 - `scripts/build-release.sh` — сборка подписанного release APK (R8 + shrinkResources).
 - `scripts/gradle.sh` — локальный Gradle 8.9 + JDK 21.
@@ -137,8 +137,12 @@ adb shell "run-as com.llamaport.app cp /data/local/tmp/model.gguf files/models/"
   может не поместиться в RAM;
 - статистика под ответом: скорость обработки промпта, скорость генерации и число
   токенов;
-- чат-шаблон берётся из метаданных модели (`llama_model_chat_template`),
-  с откатом на ChatML; для LFM3 поддержаны `<think>`/`</think>`;
+- чат-шаблон берётся из метаданных модели (`tokenizer.chat_template`) и
+  рендерится Jinja-движком llama.cpp (`common/chat`), поэтому каждая модель
+  получает свой формат диалога, а не общий угаданный; BOS добавляется ровно один
+  раз, начало ответа формирует сам шаблон. Если шаблон отрендерить не удалось,
+  используется прежний ограниченный matcher как запасной путь; для LFM3
+  по-прежнему поддержаны `<think>`/`</think>`;
 - корректная работа с UTF-8: токены склеиваются в нативном коде по границам
   символов.
 
@@ -165,9 +169,12 @@ adb shell "run-as com.llamaport.app cp /data/local/tmp/model.gguf files/models/"
 
 ## Технические детали
 
-- llama.cpp собран с `BUILD_SHARED_LIBS=ON` и `LLAMA_BUILD_MTMD=ON`, без
-  OpenMP, с `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` (телефон поддерживает
-  dotprod/fp16); `libmtmd.so` упакован в APK.
+- llama.cpp собран с `BUILD_SHARED_LIBS=ON`, `LLAMA_BUILD_MTMD=ON` и
+  `LLAMA_BUILD_COMMON=ON` (без LLGuidance и subprocess), без OpenMP, с
+  `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` (телефон поддерживает
+  dotprod/fp16); `libmtmd.so` и `libllama-common.so` упакованы в APK.
+  `libllama-common.so` нужен ради Jinja-движка чат-шаблонов и добавляет около
+  4,7 МБ к размеру APK.
 - Изображения и аудио декодируются `libmtmd` (`mtmd_helper_bitmap_init_from_buf`,
   stb_image/miniaudio), в промпт подставляется маркер `<__media__>`, а
   `mtmd_helper_eval_chunks` считает M-RoPE и позиции.
