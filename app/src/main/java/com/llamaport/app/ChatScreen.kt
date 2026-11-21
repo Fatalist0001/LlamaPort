@@ -115,9 +115,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.cloud.CloudProviderDraft
 import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
+import com.llamaport.app.ui.models.ProviderEditorPage
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.ObsidianBackground
 import com.llamaport.app.ui.components.ObsidianButton
@@ -156,6 +158,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     var settingsScreen by remember { mutableStateOf<SettingsScreen?>(null) }
     var showModels by remember { mutableStateOf(false) }
+    var providerDraft by remember { mutableStateOf<CloudProviderDraft?>(null) }
     var sheetLoadName by remember { mutableStateOf<String?>(null) }
     var emptyShakeTick by remember { mutableIntStateOf(0) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -213,6 +216,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     val palette = ObsidianTheme.palette
     val onOpenModels: () -> Unit = {
         settingsScreen = null
+        providerDraft = null
         showModels = true
     }
     val onOpenSettings: (SettingsScreen) -> Unit = { destination ->
@@ -383,8 +387,15 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     if (showModels) {
         ModalBottomSheet(
             onDismissRequest = {
-                showModels = false
-                sheetLoadName = null
+                // While the provider form is open, the first dismiss returns to
+                // the list; the second one closes the sheet.
+                if (providerDraft != null) {
+                    providerDraft = null
+                    viewModel.clearCloudEditor()
+                } else {
+                    showModels = false
+                    sheetLoadName = null
+                }
             },
             sheetState = sheetState,
             containerColor = ObsidianTheme.palette.surface,
@@ -395,17 +406,56 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
             },
             shape = MaterialTheme.shapes.extraLarge,
         ) {
-            ModelsSheet(
-                state = state,
-                onPick = { picker.launch(arrayOf("*/*")) },
-                onLoad = { file ->
-                    sheetLoadName = file.name
-                    viewModel.loadModel(file)
-                },
-                onDelete = viewModel::deleteModel,
-                onUnload = viewModel::unloadModel,
-                onMmproj = viewModel::matchedMmproj,
-            )
+            val draft = providerDraft
+            if (draft == null) {
+                ModelsSheet(
+                    state = state,
+                    onPick = { picker.launch(arrayOf("*/*")) },
+                    onLoad = { file ->
+                        sheetLoadName = file.name
+                        viewModel.loadModel(file)
+                    },
+                    onDelete = viewModel::deleteModel,
+                    onUnload = viewModel::unloadModel,
+                    onMmproj = viewModel::matchedMmproj,
+                    onSelectCloud = { providerId, modelId ->
+                        sheetLoadName = modelId
+                        viewModel.selectCloudModel(providerId, modelId)
+                    },
+                    onAddProvider = {
+                        viewModel.clearCloudEditor()
+                        providerDraft = CloudProviderDraft()
+                    },
+                    onEditProvider = { provider ->
+                        viewModel.clearCloudEditor()
+                        providerDraft = CloudProviderDraft(
+                            id = provider.id,
+                            name = provider.name,
+                            baseUrl = provider.baseUrl,
+                            apiKey = provider.apiKey,
+                            models = provider.models,
+                        )
+                    },
+                    onDeleteProvider = viewModel::deleteCloudProvider,
+                )
+            } else {
+                ProviderEditorPage(
+                    draft = draft,
+                    editor = state.cloudEditor,
+                    onDraftChange = { providerDraft = it },
+                    onFetch = viewModel::fetchCloudModels,
+                    onProbe = { modelId -> viewModel.probeCloud(draft, modelId) },
+                    onSave = { saved ->
+                        viewModel.saveCloudProvider(saved)
+                        providerDraft = null
+                        viewModel.clearCloudEditor()
+                    },
+                    onCancel = {
+                        providerDraft = null
+                        viewModel.clearCloudEditor()
+                    },
+                )
+            }
         }
     }
 
@@ -433,6 +483,8 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                     SettingsScreen.Generation -> GenerationSettingsSheet(
                         state = state,
                         onUpdate = viewModel::updateSettings,
+                        onUpdateCloudCompat = viewModel::updateCloudCompat,
+                        onProbeCloud = viewModel::probeActiveCloudModel,
                     )
                 }
             }
@@ -1133,7 +1185,7 @@ private fun SessionModelBadge(name: String) {
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
-            name.substringBeforeLast('.').take(18),
+            name.removeSuffix(".gguf").removeSuffix(".GGUF").take(18),
             style = MonoSmall.copy(fontSize = 9.sp),
             color = palette.textSecondary,
             maxLines = 1,

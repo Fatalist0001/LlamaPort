@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.llamaport.app.UiState
+import com.llamaport.app.cloud.CloudProvider
 import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
 import com.llamaport.app.ui.AppIcons
@@ -118,6 +119,10 @@ internal fun ModelsSheet(
     onDelete: (File) -> Unit,
     onUnload: () -> Unit,
     onMmproj: (File) -> File?,
+    onSelectCloud: (String, String) -> Unit,
+    onAddProvider: () -> Unit,
+    onEditProvider: (CloudProvider) -> Unit,
+    onDeleteProvider: (String) -> Unit,
 ) {
     val palette = ObsidianTheme.palette
     var pendingDelete by remember { mutableStateOf<File?>(null) }
@@ -156,6 +161,50 @@ internal fun ModelsSheet(
     ) {
         Reveal(index = 0) {
             Column {
+                Eyebrow(text = "модели", color = palette.textMuted)
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Модели",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = palette.textPrimary,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Локальный GGUF-файл или OpenAI-совместимый провайдер.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.textSecondary,
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        if (state.memTotalMb > 0) {
+            Reveal(index = 1) {
+                RamPanel(
+                    totalMb = state.memTotalMb,
+                    availableMb = availMb,
+                    modelMb = modelMb,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        Reveal(index = 2) {
+            CloudModelsBlock(
+                state = state,
+                onSelect = onSelectCloud,
+                onAdd = onAddProvider,
+                onEdit = onEditProvider,
+                onDelete = onDeleteProvider,
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Hairline()
+        Spacer(Modifier.height(16.dp))
+
+        Reveal(index = 3) {
+            Column {
                 Eyebrow(text = "локальные модели", color = palette.textMuted)
                 Spacer(Modifier.height(7.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -165,19 +214,26 @@ internal fun ModelsSheet(
                         color = palette.textPrimary,
                     )
                     Spacer(Modifier.weight(1f))
-                    if (state.loadingModel) {
+                    if (state.activeCloud == null && state.loadingModel) {
                         StateDot(color = palette.silver, size = 5.dp, pulse = true)
                         Spacer(Modifier.width(7.dp))
                         Text("ЗАГРУЗКА", style = MonoSmall, color = palette.silver)
-                    } else if (state.modelLoaded) {
+                    } else if (state.activeCloud == null && state.modelLoaded) {
                         StateDot(color = palette.success, size = 5.dp)
                         Spacer(Modifier.width(7.dp))
                         Text("В ПАМЯТИ", style = MonoSmall, color = palette.success)
+                    } else if (state.activeCloud != null) {
+                        Text("ОТКЛЮЧЕНЫ", style = MonoSmall, color = palette.textMuted)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+                val localSubtitle = if (state.activeCloud != null) {
+                    "Сейчас активна облачная модель: локальные файлы не занимают память."
+                } else {
+                    state.modelInfo ?: "Выберите файл модели, чтобы загрузить её в память"
+                }
                 Text(
-                    state.modelInfo ?: "Выберите файл модели, чтобы загрузить её в память",
+                    localSubtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.textSecondary,
                 )
@@ -200,18 +256,7 @@ internal fun ModelsSheet(
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
-
-        if (state.memTotalMb > 0) {
-            Reveal(index = 1) {
-                RamPanel(
-                    totalMb = state.memTotalMb,
-                    availableMb = availMb,
-                    modelMb = modelMb,
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-        }
+        Spacer(Modifier.height(12.dp))
 
         if (state.models.isEmpty()) {
             Column(
@@ -231,20 +276,21 @@ internal fun ModelsSheet(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "В приложении пока нет моделей",
+                    "Локальных моделей пока нет",
                     style = MaterialTheme.typography.titleSmall,
                     color = palette.textPrimary,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Нажмите «Добавить», чтобы выбрать .gguf файл.",
+                    "Нажмите «Добавить», чтобы выбрать .gguf файл, " +
+                        "или подключите облачного провайдера выше.",
                     style = MaterialTheme.typography.bodySmall,
                     color = palette.textSecondary,
                 )
             }
         } else {
             state.models.forEachIndexed { index, file ->
-                val active = file.name == state.modelName
+                val active = file.name == state.modelName && state.activeCloud == null
                 val mmproj = onMmproj(file)
                 val baseBytes = file.length() + (mmproj?.length() ?: 0L)
                 val kvBytes = if (active && state.modelLoaded) {
@@ -260,7 +306,7 @@ internal fun ModelsSheet(
                 // list slot: importing or deleting a model must not move the
                 // delete callback onto a neighbouring card.
                 key(file.absolutePath) {
-                    Reveal(index = 2 + index) {
+                    Reveal(index = 4 + index) {
                         SwipeableModelCard(
                             file = file,
                             mmproj = mmproj,
@@ -320,7 +366,7 @@ internal fun ModelsSheet(
         if (state.modelLoaded) {
             Spacer(Modifier.height(8.dp))
             ObsidianButton(
-                text = "Выгрузить модель",
+                text = if (state.activeCloud != null) "Отключить облачную модель" else "Выгрузить модель",
                 onClick = onUnload,
                 style = ObsidianButtonStyle.Ghost,
                 enabled = !state.generating,

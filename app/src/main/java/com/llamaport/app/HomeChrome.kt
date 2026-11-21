@@ -122,9 +122,11 @@ internal fun ModelChip(
     modifier: Modifier = Modifier,
 ) {
     val palette = ObsidianTheme.palette
+    val cloud = state.activeCloud != null
     val statusColor = when {
         state.serviceDead -> palette.error
         state.loadingModel || state.generating -> palette.silver
+        cloud -> palette.silver
         state.modelLoaded -> palette.success
         else -> palette.textMuted
     }
@@ -132,6 +134,7 @@ internal fun ModelChip(
         state.serviceDead -> "остановлена"
         state.loadingModel -> "загрузка"
         state.generating -> "генерация"
+        cloud -> "облако"
         state.modelLoaded -> "готова"
         else -> "не выбрана"
     }
@@ -831,6 +834,7 @@ internal fun HomeEmptyState(
                             text = when {
                                 state.loadingModel -> "загрузка модели"
                                 state.serviceDead -> "инференс остановлен"
+                                state.activeCloud != null -> "облачная модель · готов"
                                 state.modelLoaded -> "локальный интеллект · готов"
                                 else -> "локальный интеллект · llama.cpp"
                             },
@@ -845,6 +849,9 @@ internal fun HomeEmptyState(
                         text = when {
                             state.loadingModel -> "Загружаю модель…"
                             state.serviceDead -> "Процесс инференса остановлен"
+                            state.activeCloud != null ->
+                                "Облачная модель готова. Сообщения уходят провайдеру " +
+                                    "через интернет."
                             !state.modelLoaded ->
                                 "Модель работает прямо на телефоне, без интернета. " +
                                     "Выберите GGUF-файл, чтобы начать."

@@ -19,6 +19,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.llamaport.app.cloud.CloudCancelled
+import com.llamaport.app.cloud.CloudChatRequest
+import com.llamaport.app.cloud.CloudChatResult
+import com.llamaport.app.cloud.CloudClient
+import com.llamaport.app.cloud.CloudCompat
+import com.llamaport.app.cloud.CloudConfigException
+import com.llamaport.app.cloud.CloudEditorUi
+import com.llamaport.app.cloud.CloudException
+import com.llamaport.app.cloud.CloudModelRef
+import com.llamaport.app.cloud.CloudProbeRow
+import com.llamaport.app.cloud.CloudProvider
+import com.llamaport.app.cloud.CloudProviderDraft
+import com.llamaport.app.cloud.CloudStore
+import com.llamaport.app.cloud.CloudWire
+import com.llamaport.app.cloud.cloudInfoLine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +46,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
@@ -152,6 +169,12 @@ data class UiState(
     val freeMemoryBusy: Boolean = false,
     val serviceDead: Boolean = false,
     val showFreeMemory: Boolean = false,
+    /** Configured OpenAI-compatible providers, persisted in cloud.json. */
+    val providers: List<CloudProvider> = emptyList(),
+    /** Active remote model; null when a local GGUF file (or nothing) is selected. */
+    val activeCloud: CloudModelRef? = null,
+    /** Transient results of the provider editor (model list, API check). */
+    val cloudEditor: CloudEditorUi = CloudEditorUi(),
 )
 
 /**
@@ -274,6 +297,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val sessionMessages = java.util.concurrent.ConcurrentHashMap<String, List<ChatMessage>>()
     private val activityManager = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     private val toolRegistry = ToolRegistry(app)
+    private val cloudStore = CloudStore(app.filesDir) { message, throwable ->
+        Log.w(TAG, message, throwable)
+    }
+    private val cloudClient = CloudClient(logger = { message -> Log.i("CloudClient", message) })
+    private var cloudSaveJob: Job? = null
 
     private var saveJob: Job? = null
     private var estimateJob: Job? = null
@@ -361,6 +389,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     init {
         refreshModels()
         refreshMemory()
+        loadCloud()
         loadSessions()
         viewModelScope.launch {
             while (true) {
@@ -733,6 +762,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleServiceLost(message: String, epoch: Int = serviceEpoch) {
         if (epoch != serviceEpoch || serviceLossHandled) return
         serviceLossHandled = true
+        if (_state.value.activeCloud != null) {
+            // While a remote model is active the inference process holds no
+            // weights, so a death only means a stale binder to forget.
+            suppressServiceDeath = false
+            service = null
+            binding = false
+            serviceEpoch++
+            serviceDeferred = CompletableDeferred()
+            return
+        }
         // The live answer never reached the message: keep what was streamed
         // before the process died.
         val liveId = live.messageId
@@ -815,6 +854,277 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     (it.lastNeedMb > 0 && avail < it.lastNeedMb),
             )
         }
+    }
+
+    // ------------------------------------------------------------- cloud models
+
+    private fun loadCloud() {
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { cloudStore.load() }
+            val active = stored.active
+            val provider = active?.let { ref -> stored.providers.firstOrNull { it.id == ref.providerId } }
+            _state.update { state ->
+                state.copy(
+                    providers = stored.providers,
+                    activeCloud = active,
+                    modelLoaded = if (active != null) true else state.modelLoaded,
+                    modelName = if (active != null) active.modelId else state.modelName,
+                    modelInfo = if (active != null && provider != null) {
+                        cloudInfoLine(provider, active.modelId)
+                    } else {
+                        state.modelInfo
+                    },
+                )
+            }
+        }
+    }
+
+    /** Debounced so a burst of editor edits writes cloud.json once. */
+    private fun persistCloud() {
+        val providers = _state.value.providers
+        val active = _state.value.activeCloud
+        cloudSaveJob?.cancel()
+        cloudSaveJob = viewModelScope.launch {
+            delay(150)
+            withContext(Dispatchers.IO) { cloudStore.save(providers, active) }
+        }
+    }
+
+    private fun cloudErrorMessage(error: Throwable): String = when (error) {
+        is CloudConfigException -> error.message ?: "Некорректный адрес API"
+        is CloudException -> error.message ?: "Ошибка API"
+        else -> error.message ?: error.toString()
+    }
+
+    /**
+     * Swaps the provider list and keeps the remote selection consistent: when
+     * the active provider or its model disappeared, the model is unloaded
+     * instead of leaving a ghost in the top bar.
+     */
+    private fun UiState.withProviders(providers: List<CloudProvider>): UiState {
+        val current = activeCloud ?: return copy(providers = providers)
+        val provider = providers.firstOrNull {
+            it.id == current.providerId && current.modelId in it.models
+        }
+        return if (provider != null) {
+            copy(providers = providers, modelInfo = cloudInfoLine(provider, current.modelId))
+        } else {
+            copy(
+                providers = providers,
+                activeCloud = null,
+                modelLoaded = false,
+                modelName = null,
+                modelInfo = null,
+                supportsVision = false,
+                supportsAudio = false,
+                progress = null,
+            )
+        }
+    }
+
+    fun clearCloudEditor() = _state.update { it.copy(cloudEditor = CloudEditorUi()) }
+
+    fun fetchCloudModels(draft: CloudProviderDraft) {
+        if (_state.value.cloudEditor.fetching) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    cloudEditor = it.cloudEditor.copy(
+                        fetching = true,
+                        fetchError = null,
+                        fetchedModels = emptyList(),
+                        resolvedBaseUrl = null,
+                    ),
+                )
+            }
+            val outcome = runCatching { cloudClient.listModels(draft.baseUrl, draft.apiKey) }
+            _state.update { state ->
+                val editor = state.cloudEditor
+                outcome.fold(
+                    onSuccess = { result ->
+                        state.copy(
+                            cloudEditor = editor.copy(
+                                fetching = false,
+                                fetchedModels = result.models,
+                                resolvedBaseUrl = result.baseUrl,
+                                fetchError = null,
+                            ),
+                        )
+                    },
+                    onFailure = { error ->
+                        state.copy(
+                            cloudEditor = editor.copy(
+                                fetching = false,
+                                fetchedModels = emptyList(),
+                                fetchError = cloudErrorMessage(error),
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    fun probeCloud(draft: CloudProviderDraft, modelId: String) {
+        if (_state.value.cloudEditor.probing || modelId.isBlank()) return
+        val existing = draft.id?.let { id -> _state.value.providers.firstOrNull { it.id == id } }
+        viewModelScope.launch {
+            _state.update {
+                it.copy(cloudEditor = it.cloudEditor.copy(probing = true, probe = emptyList()))
+            }
+            val outcome = runCatching {
+                cloudClient.probe(
+                    baseUrl = draft.baseUrl,
+                    apiKey = draft.apiKey,
+                    model = modelId,
+                    compat = existing?.compat ?: CloudCompat(),
+                )
+            }
+            _state.update { state ->
+                outcome.fold(
+                    onSuccess = { result ->
+                        val providers = if (draft.id == null) {
+                            state.providers
+                        } else {
+                            state.providers.map { provider ->
+                                if (provider.id == draft.id) provider.copy(compat = result.compat) else provider
+                            }
+                        }
+                        state.copy(
+                            providers = providers,
+                            cloudEditor = state.cloudEditor.copy(
+                                probing = false,
+                                probe = result.rows,
+                                detectedCompat = result.compat,
+                            ),
+                        )
+                    },
+                    onFailure = { error ->
+                        state.copy(
+                            cloudEditor = state.cloudEditor.copy(
+                                probing = false,
+                                probe = listOf(CloudProbeRow("Проверка API", false, cloudErrorMessage(error))),
+                            ),
+                        )
+                    },
+                )
+            }
+            if (draft.id != null) persistCloud()
+        }
+    }
+
+    fun probeActiveCloudModel() {
+        val state = _state.value
+        val ref = state.activeCloud ?: return
+        val provider = state.providers.firstOrNull { it.id == ref.providerId } ?: return
+        probeCloud(
+            CloudProviderDraft(
+                id = provider.id,
+                name = provider.name,
+                baseUrl = provider.baseUrl,
+                apiKey = provider.apiKey,
+                models = provider.models,
+            ),
+            ref.modelId,
+        )
+    }
+
+    fun updateCloudCompat(transform: (CloudCompat) -> CloudCompat) {
+        val ref = _state.value.activeCloud ?: return
+        _state.update { state ->
+            state.copy(
+                providers = state.providers.map { provider ->
+                    if (provider.id == ref.providerId) {
+                        provider.copy(compat = transform(provider.compat))
+                    } else {
+                        provider
+                    }
+                },
+            )
+        }
+        persistCloud()
+    }
+
+    fun selectCloudModel(providerId: String, modelId: String) {
+        val state = _state.value
+        if (state.generating || state.loadingModel) return
+        val provider = state.providers.firstOrNull { it.id == providerId } ?: return
+        if (modelId !in provider.models) return
+        val hadLocalModel = state.activeCloud == null && state.modelLoaded
+        _state.update {
+            it.copy(
+                activeCloud = CloudModelRef(provider.id, modelId),
+                modelLoaded = true,
+                modelName = modelId,
+                modelInfo = cloudInfoLine(provider, modelId),
+                loadingModel = false,
+                estimate = null,
+                modelCap = DEFAULT_CONTEXT_CAP,
+                mmprojName = null,
+                mmprojBytes = 0L,
+                supportsVision = false,
+                supportsAudio = false,
+                pendingAttachments = emptyList(),
+                lastNeedMb = 0L,
+                showFreeMemory = false,
+                serviceDead = false,
+                progress = null,
+                error = null,
+            )
+        }
+        persistCloud()
+        setStatus("Облачная модель выбрана")
+        if (hadLocalModel) {
+            // The remote model makes local weights pointless; free the RAM.
+            viewModelScope.launch {
+                withContext(Dispatchers.IO) { runCatching { service?.unload() } }
+                refreshMemory()
+            }
+        }
+    }
+
+    fun saveCloudProvider(draft: CloudProviderDraft) {
+        val name = draft.name.trim()
+        if (name.isEmpty()) {
+            _state.update { it.copy(error = "Укажите название провайдера") }
+            return
+        }
+        val base = runCatching { CloudWire.normalizeBaseUrl(draft.baseUrl) }.getOrElse { error ->
+            _state.update { it.copy(error = cloudErrorMessage(error)) }
+            return
+        }
+        val models = draft.models.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val id = draft.id ?: UUID.randomUUID().toString()
+        val existing = _state.value.providers.firstOrNull { it.id == id }
+        val compat = _state.value.cloudEditor.detectedCompat ?: existing?.compat ?: CloudCompat()
+        val provider = CloudProvider(
+            id = id,
+            name = name,
+            baseUrl = base,
+            apiKey = draft.apiKey.trim(),
+            models = models,
+            compat = compat,
+        )
+        _state.update { state ->
+            val providers = if (existing == null) {
+                state.providers + provider
+            } else {
+                state.providers.map { if (it.id == id) provider else it }
+            }
+            state.withProviders(providers)
+        }
+        persistCloud()
+        setStatus("Провайдер «$name» сохранён")
+    }
+
+    fun deleteCloudProvider(id: String) {
+        if (_state.value.generating) return
+        val provider = _state.value.providers.firstOrNull { it.id == id } ?: return
+        _state.update { state ->
+            state.withProviders(state.providers.filterNot { it.id == id })
+        }
+        persistCloud()
+        setStatus("Провайдер «${provider.name}» удалён")
     }
 
     // ---------------------------------------------------------------- models
@@ -988,6 +1298,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun loadModel(file: File, force: Boolean = false) {
         val snapshot = _state.value
         if (snapshot.generating || snapshot.loadingModel) return
+        if (snapshot.activeCloud != null) {
+            _state.update { it.copy(activeCloud = null) }
+            persistCloud()
+        }
         viewModelScope.launch {
             _state.update {
                 it.copy(
@@ -1167,6 +1481,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun reloadModel() {
+        if (_state.value.activeCloud != null) {
+            setStatus("Облачная модель не требует перезагрузки")
+            return
+        }
         val name = _state.value.modelName ?: return
         val file = File(modelsDir, name)
         if (file.exists()) loadModel(file)
@@ -1174,6 +1492,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun unloadModel() {
         if (_state.value.generating) return
+        if (_state.value.activeCloud != null) {
+            _state.update {
+                it.copy(
+                    activeCloud = null,
+                    modelLoaded = false,
+                    modelName = null,
+                    modelInfo = null,
+                    supportsVision = false,
+                    supportsAudio = false,
+                    progress = null,
+                )
+            }
+            persistCloud()
+            setStatus("Облачная модель отключена")
+            return
+        }
         viewModelScope.launch {
             val svc = service
             if (svc != null) {
@@ -1223,6 +1557,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun freeMemory() {
         if (_state.value.freeMemoryBusy) return
+        val cloudActive = _state.value.activeCloud != null
         viewModelScope.launch {
             _state.update { it.copy(freeMemoryBusy = true) }
             val before = currentAvailMb()
@@ -1234,9 +1569,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 serviceDeferred = CompletableDeferred()
                 _state.update {
                     it.copy(
-                        modelLoaded = false,
-                        modelInfo = null,
-                        generating = false,
+                        modelLoaded = if (cloudActive) it.modelLoaded else false,
+                        modelInfo = if (cloudActive) it.modelInfo else null,
+                        generating = if (cloudActive) it.generating else false,
                         progress = null,
                         mmprojName = null,
                         mmprojBytes = 0L,
@@ -1253,8 +1588,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _state.update {
                     it.copy(
-                        modelLoaded = false,
-                        modelInfo = null,
+                        modelLoaded = if (cloudActive) it.modelLoaded else false,
+                        modelInfo = if (cloudActive) it.modelInfo else null,
                         mmprojName = null,
                         mmprojBytes = 0L,
                         supportsVision = false,
@@ -1407,6 +1742,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun scheduleEstimateRefresh() {
         val state = _state.value
+        if (state.activeCloud != null) return
         if (state.generating || state.loadingModel) return
         val name = state.modelName ?: return
         val file = File(modelsDir, name)
@@ -1433,6 +1769,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stop() {
         cancelRequested = true
+        if (_state.value.activeCloud != null) {
+            // Break the socket instead of waiting for the read timeout; the
+            // client turns that into CloudCancelled and keeps partial text.
+            cloudClient.abort()
+            return
+        }
         val svc = service ?: return
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { svc.stop() }
@@ -1445,13 +1787,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val text = snapshot.input.trim()
         val attachments = snapshot.pendingAttachments
         if (text.isEmpty() && attachments.isEmpty()) return
-        if (attachments.any { it.kind == "image" } && !snapshot.supportsVision) {
-            _state.update { it.copy(error = "Модель не умеет читать изображения: нужен multimodal mmproj") }
-            return
-        }
-        if (attachments.any { it.kind == "audio" } && !snapshot.supportsAudio) {
-            _state.update { it.copy(error = "Модель не умеет слушать аудио: нужен multimodal mmproj") }
-            return
+        if (snapshot.activeCloud != null) {
+            if (attachments.isNotEmpty()) {
+                _state.update {
+                    it.copy(error = "Облачные модели в этой версии принимают только текст")
+                }
+                return
+            }
+        } else {
+            if (attachments.any { it.kind == "image" } && !snapshot.supportsVision) {
+                _state.update { it.copy(error = "Модель не умеет читать изображения: нужен multimodal mmproj") }
+                return
+            }
+            if (attachments.any { it.kind == "audio" } && !snapshot.supportsAudio) {
+                _state.update { it.copy(error = "Модель не умеет слушать аудио: нужен multimodal mmproj") }
+                return
+            }
         }
 
         val userMsg = ChatMessage(role = "user", text = text, attachments = attachments)
@@ -1575,7 +1926,158 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val error: String?,
     )
 
+    /**
+     * One model turn: local GGUF inference or an OpenAI-compatible request.
+     * The tool loop above is model-agnostic and uses this single entry point.
+     */
     private suspend fun generateOnce(
+        settings: Settings,
+        history: List<ChatMessage>,
+        assistant: ChatMessage,
+        extraSystem: String,
+    ): GenerationResult {
+        val cloud = _state.value.activeCloud
+        return if (cloud != null) {
+            generateOnceCloud(settings, history, assistant, extraSystem, cloud)
+        } else {
+            generateOnceLocal(settings, history, assistant, extraSystem)
+        }
+    }
+
+    private suspend fun generateOnceCloud(
+        settings: Settings,
+        history: List<ChatMessage>,
+        assistant: ChatMessage,
+        extraSystem: String,
+        ref: CloudModelRef,
+    ): GenerationResult {
+        val provider = _state.value.providers.firstOrNull { it.id == ref.providerId }
+        if (provider == null) {
+            val message = "Провайдер этой модели больше не настроен"
+            finishAssistant(assistant.id, "", -1, message, false, 0f, 0, 0f)
+            return GenerationResult("", -1, false, message)
+        }
+        val seq = ++generationSeq
+        val buffer = StringBuilder()
+        val startedAt = System.nanoTime()
+        val finalized = AtomicBoolean(false)
+        var promptTokens = 0
+        var completionTokens = 0
+        var deltas = 0
+        var lastSpeedUiAt = 0L
+
+        fun finish(error: String?) {
+            if (!finalized.compareAndSet(false, true)) return
+            val wasCancelled = cancelRequested
+            val generated = if (completionTokens > 0) completionTokens else deltas
+            finishAssistant(
+                assistant.id,
+                buffer.toString(),
+                generated,
+                error,
+                wasCancelled,
+                promptSpeed = 0f,
+                promptTokens = promptTokens,
+                genSpeed = 0f,
+                startedAt = startedAt,
+            )
+            if (!wasCancelled && error != null) {
+                _state.update { it.copy(error = error) }
+            }
+        }
+
+        val enableThinking = settings.thinkingBudget > 0
+        val turns = buildTurns(
+            settings.systemPrompt,
+            history,
+            extraSystem,
+            enableThinking,
+            settings.thinkingBudget,
+        )
+        val messages = buildCloudMessages(turns)
+        val maxNew = settings.maxTokens + if (enableThinking) settings.thinkingBudget else 0
+        val request = CloudChatRequest(
+            baseUrl = provider.baseUrl,
+            apiKey = provider.apiKey,
+            model = ref.modelId,
+            messages = messages,
+            temperature = settings.temperature,
+            topP = settings.topP,
+            topK = settings.topK,
+            maxTokens = maxNew,
+            compat = provider.compat,
+        )
+        Log.i(
+            TAG,
+            "generateOnceCloud: ${messages.length()} messages, provider=${provider.id}, model=${ref.modelId}",
+        )
+        return try {
+            val result = cloudClient.chat(
+                request,
+                onDelta = { chunk ->
+                    if (seq != generationSeq) return@chat
+                    buffer.append(chunk)
+                    deltas++
+                    if (live.messageId == assistant.id) queueLiveToken(assistant.id, chunk)
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastSpeedUiAt >= SPEED_UI_MS) {
+                        lastSpeedUiAt = now
+                        val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
+                        if (seconds > 0.05) {
+                            live.setSpeed(assistant.id, (deltas / seconds).toFloat())
+                        }
+                    }
+                },
+                isCancelled = { cancelRequested || seq != generationSeq },
+            )
+            promptTokens = result.promptTokens
+            completionTokens = result.completionTokens
+            applyCloudCompat(provider, result)
+            finish(null)
+            GenerationResult(buffer.toString(), completionTokens, false, null)
+        } catch (cancelled: CloudCancelled) {
+            cancelRequested = true
+            finish(null)
+            GenerationResult(buffer.toString(), deltas, true, null)
+        } catch (error: CloudException) {
+            val message = error.message ?: "Ошибка облачной модели"
+            Log.w(TAG, "cloud generation failed: http=${error.httpCode}")
+            finish(message)
+            GenerationResult(buffer.toString(), -1, false, message)
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t
+        } catch (t: Throwable) {
+            Log.e(TAG, "cloud generation crashed", t)
+            val message = t.message ?: t.toString()
+            finish(message)
+            GenerationResult(buffer.toString(), -1, false, message)
+        }
+    }
+
+    /** Persists what negotiation learned and tells the user once. */
+    private fun applyCloudCompat(provider: CloudProvider, result: CloudChatResult) {
+        if (result.compat == provider.compat) return
+        _state.update { state ->
+            state.copy(
+                providers = state.providers.map {
+                    if (it.id == provider.id) it.copy(compat = result.compat) else it
+                },
+            )
+        }
+        persistCloud()
+        val notice = when {
+            provider.compat.topK && !result.compat.topK ->
+                "API не принимает top_k — параметр отключён"
+            provider.compat.maxTokensField != result.compat.maxTokensField ->
+                "Лимит токенов отправлен в другом поле"
+            provider.compat.stream && !result.compat.stream ->
+                "API не поддерживает поток — ответы без потока"
+            else -> "Параметры API скорректированы автоматически"
+        }
+        setStatus(notice, autoClearMs = 6000)
+    }
+
+    private suspend fun generateOnceLocal(
         settings: Settings,
         history: List<ChatMessage>,
         assistant: ChatMessage,
@@ -1901,14 +2403,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         return BaseCacheConfig(basePrompt, digest.digest(), cacheFile.absolutePath)
     }
 
-    private suspend fun buildPrompt(
-        service: ILlmService,
+    private data class PromptTurns(
+        val system: String,
+        val roles: List<String>,
+        val contents: List<String>,
+        val mediaPaths: List<String>,
+    )
+
+    /**
+     * Builds the role/content pairs once. The local path renders them through
+     * the model's Jinja chat template; the cloud path sends them as JSON.
+     */
+    private fun buildTurns(
         systemPrompt: String,
         history: List<ChatMessage>,
         extraSystem: String,
         enableThinking: Boolean,
         thinkingBudget: Int,
-    ): PromptBundle {
+    ): PromptTurns {
         val system = buildString {
             if (systemPrompt.isNotBlank()) append(systemPrompt)
             if (extraSystem.isNotBlank()) {
@@ -1958,12 +2470,25 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        return PromptTurns(system, roles, contents, mediaPaths)
+    }
 
+    private suspend fun buildPrompt(
+        service: ILlmService,
+        systemPrompt: String,
+        history: List<ChatMessage>,
+        extraSystem: String,
+        enableThinking: Boolean,
+        thinkingBudget: Int,
+    ): PromptBundle {
+        val turns = buildTurns(systemPrompt, history, extraSystem, enableThinking, thinkingBudget)
+        val system = turns.system
+        val mediaPaths = turns.mediaPaths
         val (templated, baseTemplated) = withContext(Dispatchers.IO) {
             val full = runCatching {
                 service.applyTemplate(
-                    roles.toTypedArray(),
-                    contents.toTypedArray(),
+                    turns.roles.toTypedArray(),
+                    turns.contents.toTypedArray(),
                     true,
                     enableThinking,
                 )
@@ -1988,31 +2513,53 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (templated.isNotEmpty()) return PromptBundle(templated, baseTemplated, mediaPaths)
 
         val sb = StringBuilder()
-        if (system.isNotBlank()) sb.append("System: ").append(system).append("\n\n")
-        for (m in history) {
-            when (m.role) {
-                "tool" -> sb.append("Tool (").append(m.toolName).append("):\n")
-                    .append(m.toolResult ?: m.text).append("\n\n")
-                "user" -> {
-                    val content = messageContent(m, ArrayList())
-                    if (content.isNotBlank()) sb.append("User: ").append(content).append("\n\n")
-                }
-                "assistant" -> if (!m.isError && m.text.isNotBlank()) {
-                    val content = assistantPromptText(m)
-                    if (content.isNotBlank()) {
-                        sb.append("Assistant: ").append(content).append("\n\n")
-                    }
-                }
+        for (index in turns.roles.indices) {
+            val content = turns.contents[index]
+            if (content.isBlank()) continue
+            when (turns.roles[index]) {
+                "system" -> sb.append("System: ").append(content).append("\n\n")
+                "tool" -> sb.append(content).append("\n\n")
+                "user" -> sb.append("User: ").append(content).append("\n\n")
+                "assistant" -> sb.append("Assistant: ").append(content).append("\n\n")
             }
         }
         sb.append("Assistant:")
         return PromptBundle(sb.toString().toByteArray(Charsets.UTF_8), ByteArray(0), mediaPaths)
     }
 
+    /**
+     * JSON messages for an OpenAI-compatible API. A `tool` result becomes a
+     * `user` turn with its "Tool result (name):" prefix: the spec requires a
+     * tool_call_id for `role: tool`, and orphan tool messages are rejected.
+     * Media markers from older local sessions degrade to a short note.
+     */
+    private fun buildCloudMessages(turns: PromptTurns): JSONArray {
+        val messages = JSONArray()
+        for (index in turns.roles.indices) {
+            val content = turns.contents[index].replace(MEDIA_MARKER, "[вложение]").trim()
+            if (content.isEmpty()) continue
+            val role = when (turns.roles[index]) {
+                "system", "user", "assistant" -> turns.roles[index]
+                "tool" -> "user"
+                else -> continue
+            }
+            messages.put(
+                JSONObject().apply {
+                    put("role", role)
+                    put("content", content)
+                },
+            )
+        }
+        return messages
+    }
+
     override fun onCleared() {
         super.onCleared()
         saveJob?.cancel()
         estimateJob?.cancel()
+        cloudSaveJob?.cancel()
+        runCatching { cloudClient.abort() }
+        runCatching { cloudStore.save(_state.value.providers, _state.value.activeCloud) }
         runCatching { saveNow() }
         runCatching { appContext.unbindService(connection) }
         runCatching { appContext.stopService(Intent(appContext, LlmService::class.java)) }

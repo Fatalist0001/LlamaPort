@@ -498,6 +498,42 @@ object AppIcons {
         }.build()
     }
 
+    /** Cloud outline used for API providers. */
+    val Cloud: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Cloud",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(fill = SolidColor(Color.Black)) {
+                // A wide cloud body with a bulky left lobe, drawn as one shape.
+                moveTo(7.4f, 19.2f)
+                curveTo(4.4f, 19.2f, 2f, 16.9f, 2f, 14f)
+                curveTo(2f, 11.4f, 3.9f, 9.3f, 6.4f, 8.9f)
+                curveTo(7.2f, 6.4f, 9.5f, 4.6f, 12.2f, 4.6f)
+                curveTo(15.4f, 4.6f, 18.1f, 6.8f, 18.6f, 9.8f)
+                curveTo(20.6f, 10.5f, 22f, 12.3f, 22f, 14.5f)
+                curveTo(22f, 17.1f, 19.9f, 19.2f, 17.3f, 19.2f)
+                close()
+                moveTo(7.4f, 17f)
+                lineTo(17.3f, 17f)
+                curveTo(18.8f, 17f, 20f, 15.9f, 20f, 14.5f)
+                curveTo(20f, 13.1f, 18.8f, 12f, 17.4f, 12f)
+                lineTo(16.6f, 12f)
+                lineTo(16.6f, 11f)
+                curveTo(16.6f, 8.6f, 14.7f, 6.6f, 12.2f, 6.6f)
+                curveTo(10.1f, 6.6f, 8.4f, 8f, 8f, 10f)
+                lineTo(7.9f, 10.9f)
+                lineTo(7f, 10.9f)
+                curveTo(5.3f, 10.9f, 4f, 12.2f, 4f, 13.9f)
+                curveTo(4f, 15.6f, 5.4f, 17f, 7.4f, 17f)
+                close()
+            }
+        }.build()
+    }
+
     val Check: ImageVector by lazy {
         ImageVector.Builder(
             name = "Check",

@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.llamaport.app.Settings
+import com.llamaport.app.cloud.CloudCompat
 import com.llamaport.app.UiState
 import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
@@ -71,6 +72,7 @@ import com.llamaport.app.ui.components.ObsidianChip
 import com.llamaport.app.ui.components.ObsidianSlider
 import com.llamaport.app.ui.components.ObsidianSwitch
 import com.llamaport.app.ui.components.StateDot
+import com.llamaport.app.ui.models.CloudCompatControls
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
@@ -154,6 +156,18 @@ internal fun SettingsSheet(
                 description = "Контекст, потоки, пакеты, Flash Attention, mmap и тип KV-кэша " +
                     "применяются после следующей загрузки или перезагрузки модели.",
             )
+        }
+
+        if (state.activeCloud != null) {
+            Spacer(Modifier.height(12.dp))
+            Reveal(index = 1) {
+                Notice(
+                    text = "Сейчас активна облачная модель. Контекст, потоки, пакеты, " +
+                        "Flash Attention, mmap и KV-кэш относятся только к локальным " +
+                        "моделям и для облачной не используются.",
+                    color = palette.textSecondary,
+                )
+            }
         }
 
         Spacer(Modifier.height(18.dp))
@@ -341,7 +355,8 @@ internal fun SettingsSheet(
                     text = "Перезагрузить модель",
                     onClick = onReload,
                     style = ObsidianButtonStyle.Secondary,
-                    enabled = state.modelLoaded && !state.generating && !state.loadingModel,
+                    enabled = state.modelLoaded && state.activeCloud == null &&
+                        !state.generating && !state.loadingModel,
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -369,12 +384,19 @@ internal fun SettingsSheet(
 internal fun GenerationSettingsSheet(
     state: UiState,
     onUpdate: ((Settings) -> Settings) -> Unit,
+    onUpdateCloudCompat: ((CloudCompat) -> CloudCompat) -> Unit,
+    onProbeCloud: () -> Unit,
 ) {
     val palette = ObsidianTheme.palette
     val settings = state.settings
     var behaviorExpanded by rememberSaveable { mutableStateOf(true) }
     var detailsExpanded by rememberSaveable { mutableStateOf(false) }
     var toolsExpanded by rememberSaveable { mutableStateOf(false) }
+    var compatExpanded by rememberSaveable { mutableStateOf(true) }
+    val activeProvider = state.activeCloud?.let { ref ->
+        state.providers.firstOrNull { it.id == ref.providerId }
+    }
+    val cloudCompat = activeProvider?.compat
 
     SettingsPage {
         Reveal(index = 0) {
@@ -479,6 +501,12 @@ internal fun GenerationSettingsSheet(
                         )
                         SettingsSlider(
                             label = "Top-K",
+                            description = if (cloudCompat?.topK == false) {
+                                "Этот API не принимает top_k — параметр не отправляется."
+                            } else {
+                                null
+                            },
+                            enabled = cloudCompat?.topK ?: true,
                             value = settings.topK.toFloat(),
                             range = 1f..128f,
                             display = { it.roundToInt().toString() },
@@ -597,6 +625,35 @@ internal fun GenerationSettingsSheet(
                             color = palette.textMuted,
                         )
                     }
+                }
+            }
+        }
+
+        if (activeProvider != null && cloudCompat != null) {
+            Spacer(Modifier.height(12.dp))
+            Reveal(index = 3) {
+                SettingsSection(
+                    index = "03",
+                    title = "Совместимость API",
+                    subtitle = activeProvider.name + " · " + (state.activeCloud?.modelId ?: ""),
+                    expanded = compatExpanded,
+                    onToggle = { compatExpanded = !compatExpanded },
+                ) {
+                    Text(
+                        "API не сообщает, какие параметры он принимает. Лишние поля " +
+                            "отключаются автоматически при первой ошибке и запоминаются; " +
+                            "здесь их можно включить или выключить вручную.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textMuted,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    CloudCompatControls(
+                        compat = cloudCompat,
+                        probing = state.cloudEditor.probing,
+                        probe = state.cloudEditor.probe,
+                        onUpdate = onUpdateCloudCompat,
+                        onProbe = onProbeCloud,
+                    )
                 }
             }
         }
@@ -937,6 +994,7 @@ private fun SettingsSlider(
     description: String? = null,
     steps: Int = 0,
     decimal: Boolean = false,
+    enabled: Boolean = true,
     onExactCommit: ((Float) -> Unit)? = null,
 ) {
     val palette = ObsidianTheme.palette
@@ -969,11 +1027,13 @@ private fun SettingsSlider(
                 display = display,
                 parse = parse,
                 decimal = decimal,
+                enabled = enabled,
                 onCommit = onExactCommit ?: onValueChange,
             )
         }
         ObsidianSlider(
             value = clamped,
+            enabled = enabled,
             onValueChange = { next ->
                 if (steps > 0) {
                     val index = stepIndex(next, range, steps)
@@ -1060,6 +1120,7 @@ private fun <T> ExactNumberField(
     parse: (String) -> T?,
     onCommit: (T) -> Unit,
     decimal: Boolean,
+    enabled: Boolean = true,
 ) {
     val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
@@ -1084,9 +1145,10 @@ private fun <T> ExactNumberField(
     BasicTextField(
         value = if (focused) draft else display(animated),
         onValueChange = { draft = it },
+        enabled = enabled,
         singleLine = true,
         textStyle = MonoNumeric.copy(
-            color = palette.silver,
+            color = if (enabled) palette.silver else palette.textMuted,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
         ),
