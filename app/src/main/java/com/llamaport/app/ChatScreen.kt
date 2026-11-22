@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -120,6 +122,8 @@ import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
 import com.llamaport.app.ui.models.ProviderEditorPage
+import com.llamaport.app.ui.robot.RobotDemoDialog
+import com.llamaport.app.ui.robot.RobotDock
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.ObsidianBackground
 import com.llamaport.app.ui.components.ObsidianButton
@@ -129,7 +133,6 @@ import com.llamaport.app.ui.components.ObsidianProgressLine
 import com.llamaport.app.ui.components.SilverPulseOverlay
 import com.llamaport.app.ui.components.SilverShimmerLine
 import com.llamaport.app.ui.components.StateDot
-import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
@@ -161,6 +164,9 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
     var providerDraft by remember { mutableStateOf<CloudProviderDraft?>(null) }
     var sheetLoadName by remember { mutableStateOf<String?>(null) }
     var emptyShakeTick by remember { mutableIntStateOf(0) }
+    // Hidden robot state demo (debug): long-press the home hero or the dock
+    // robot. Owned here so both entry points share one dialog.
+    var showRobotDemo by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -298,6 +304,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                             mediaPicker.launch(mediaMimeTypes(state))
                         },
                         onRemoveAttachment = viewModel::removePendingAttachment,
+                        onRobotLongPress = { showRobotDemo = true },
                     )
                 }
             },
@@ -375,6 +382,7 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                         shakeTick = emptyShakeTick,
                         onChooseModel = onOpenModels,
                         onSuggestion = viewModel::onInputChange,
+                        onOpenRobotDemo = { showRobotDemo = true },
                     )
                 } else {
                     MessageList(state, viewModel.live)
@@ -489,6 +497,10 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 }
             }
         }
+    }
+
+    if (showRobotDemo) {
+        RobotDemoDialog { showRobotDemo = false }
     }
 
     state.memoryWarning?.let { warning ->
@@ -754,6 +766,7 @@ private fun ChatInputBar(
     onStop: () -> Unit,
     onAttach: () -> Unit,
     onRemoveAttachment: (Attachment) -> Unit,
+    onRobotLongPress: () -> Unit,
 ) {
     val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
@@ -815,6 +828,30 @@ private fun ChatInputBar(
                     }
                 }
             }
+            // The chat companion: the home hero docks here for the whole
+            // conversation — the bottom chrome never scrolls away with the
+            // messages and stays visible above the keyboard.
+            AnimatedVisibility(
+                visible = state.messages.isNotEmpty(),
+                enter = if (reduced) {
+                    fadeIn(tween(MotionTokens.Durations.FADE_REDUCED))
+                } else {
+                    fadeIn(tween(MotionTokens.Durations.ENTER)) +
+                        slideInVertically(initialOffsetY = { it / 2 })
+                },
+                exit = if (reduced) {
+                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
+                } else {
+                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED)) +
+                        slideOutVertically(targetOffsetY = { it / 2 })
+                },
+            ) {
+                RobotDock(
+                    state = state,
+                    live = live,
+                    onLongPress = onRobotLongPress,
+                )
+            }
             Row(verticalAlignment = Alignment.Bottom) {
                 Row(
                     Modifier
@@ -873,10 +910,6 @@ private fun ChatInputBar(
                             }
                         },
                     )
-                }
-                if (state.generating) {
-                    Spacer(Modifier.width(8.dp))
-                    SpeedChip(live)
                 }
                 Spacer(Modifier.width(8.dp))
                 SendStopButton(
@@ -977,30 +1010,6 @@ private fun SendStopButton(
             color = palette.silver,
             modifier = Modifier.matchParentSize(),
             maxScale = 1.5f,
-        )
-    }
-}
-
-/** Live generation speed right next to the send/stop button. */
-@Composable
-private fun SpeedChip(live: StreamingAnswer) {
-    // Read here, not in ChatInputBar: a speed tick must not recompose the bar.
-    val palette = ObsidianTheme.palette
-    val tokensPerSecond = live.speed
-    Row(
-        Modifier
-            .clip(PillShape)
-            .background(palette.nested)
-            .border(1.dp, palette.hairline, PillShape)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StateDot(color = palette.silver, size = 4.dp, pulse = false)
-        Spacer(Modifier.width(6.dp))
-        AnimatedNumber(
-            value = tokensPerSecond,
-            style = MonoNumeric.copy(fontSize = 11.sp, color = palette.silver),
-            format = { String.format(Locale.ROOT, "%.1f t/s", it) },
         )
     }
 }

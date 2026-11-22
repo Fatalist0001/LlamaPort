@@ -2,11 +2,6 @@ package com.llamaport.app
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -92,8 +87,8 @@ import com.llamaport.app.ui.motion.Reveal
 import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotStage
-import com.llamaport.app.ui.robot.RobotDemoDialog
 import com.llamaport.app.ui.robot.RobotState
+import com.llamaport.app.ui.robot.rememberLoadFill
 import com.llamaport.app.ui.theme.EyebrowStyle
 import com.llamaport.app.ui.theme.MonoSmall
 import com.llamaport.app.ui.theme.ObsidianTheme
@@ -105,6 +100,10 @@ import kotlin.math.sin
 internal fun robotStateFor(state: UiState): RobotState = when {
     state.serviceDead -> RobotState.Error
     state.loadingModel -> RobotState.Loading
+    // Prompt processing: the robot mulls the request before the first token —
+    // the eyes dart and the antenna blinks. Visible in the drawer header and
+    // in the chat dock; the home hero is already gone by then.
+    state.progress?.phase == GenerationPhase.PROMPT -> RobotState.Thinking
     state.generating -> RobotState.Generating
     state.modelLoaded -> RobotState.Idle
     else -> RobotState.Sleeping
@@ -683,7 +682,7 @@ private val QUICK_ACTIONS = listOf(
 /**
  * Empty state: the Obsidian Core, a precise wordmark, and either the model
  * picker or four compact prompt cards. A long-press on the Core opens the
- * hidden robot state demo (debug), exactly as before.
+ * hidden robot state demo (debug) via [onOpenRobotDemo].
  */
 @Composable
 internal fun HomeEmptyState(
@@ -691,13 +690,10 @@ internal fun HomeEmptyState(
     shakeTick: Int,
     onChooseModel: () -> Unit,
     onSuggestion: (String) -> Unit,
+    onOpenRobotDemo: () -> Unit,
 ) {
     val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
-    var showRobotDemo by remember { mutableStateOf(false) }
-    if (showRobotDemo) {
-        RobotDemoDialog { showRobotDemo = false }
-    }
 
     // "+" on an empty chat shakes the screen instead of creating a chat.
     val shake = remember { Animatable(0f) }
@@ -724,25 +720,7 @@ internal fun HomeEmptyState(
         wasGenerating = state.generating
     }
 
-    val loadingProgress = when {
-        !state.loadingModel -> 0f
-        // With reduced motion the eyes sit at a readable half-filled state
-        // instead of running an endless decorative fill.
-        reduced -> 0.6f
-        else -> {
-            val infinite = rememberInfiniteTransition(label = "loadFill")
-            val t by infinite.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 1100, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "loadFillT",
-            )
-            t
-        }
-    }
+    val loadingProgress = rememberLoadFill(state.loadingModel)
 
     val statusColor = when {
         state.serviceDead -> palette.error
@@ -793,7 +771,7 @@ internal fun HomeEmptyState(
                                 progress = loadingProgress,
                                 active = true,
                                 lively = true,
-                                onLongPress = { showRobotDemo = true },
+                                onLongPress = onOpenRobotDemo,
                             )
                         }
                         // One short local silver bloom when a model finishes
