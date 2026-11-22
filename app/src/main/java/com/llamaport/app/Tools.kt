@@ -202,7 +202,7 @@ class ToolRegistry(private val context: Context) {
             appendLine("You can use tools. To call one, output exactly one line:")
             appendLine("<tool_call>{\"name\":\"tool_name\",\"arguments\":{...}}</tool_call>")
             appendLine("Example: <tool_call>{\"name\":\"calculator\",\"arguments\":{\"expression\":\"2+3\"}}</tool_call>")
-            appendLine("Use at most one tool per reply. After the tool result, continue and answer the user. Never invent tool output.")
+            appendLine("Use at most one tool per reply. After a tool result you may call another tool in the same format or write the final answer. Chain as many tool calls, one per reply, as the task needs. Never invent tool output.")
             appendLine("Available tools:")
             for (tool in tools) {
                 appendLine("- ${tool.name}: ${tool.summary}")

@@ -624,6 +624,9 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
             } else {
                 "промпт ${progress.processed}"
             }
+        // While a tool runs there is no generation in flight: show which
+        // step is executing instead of the generic label.
+        state.generating && state.status != null -> state.status
         state.generating -> "генерация"
         else -> state.status
     }

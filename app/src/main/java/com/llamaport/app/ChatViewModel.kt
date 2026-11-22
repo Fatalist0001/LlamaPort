@@ -256,6 +256,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         const val BASE_CACHE_FORMAT = "llamaport-base-v1"
         const val LLAMA_BUILD = "b12129"
         const val BASE_CACHE_KEEP_FILES = 3
+        /** Identical back-to-back tool outcomes allowed before the loop counts as stuck. */
+        const val MAX_IDENTICAL_TOOL_REPEATS = 5
         /** At most one live-text update per display frame at 120 Hz. */
         const val LIVE_FLUSH_MS = 8L
         /** Prompt progress is redrawn at most ten times per second. */
@@ -1825,11 +1827,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val settings = _state.value.settings
             val toolsAvailable = settings.toolsEnabled && toolRegistry.enabledTools(settings).isNotEmpty()
             val toolsPrompt = if (toolsAvailable) toolRegistry.prompt(settings) else ""
-            var completed = false
             var rounds = 0
-            var lastWasTool = false
+            // No step budget: the model may chain tool calls for as long as
+            // the task needs. The only circuit breaker is a stuck loop — the
+            // identical call repeated back to back with no progress.
+            var repeatSignature: String? = null
+            var repeatCount = 0
+            var stuckLoop = false
 
-            while (rounds < 6) {
+            while (true) {
                 if (cancelRequested) break
                 rounds++
                 val history = _state.value.messages.filter { message ->
@@ -1843,19 +1849,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 if (result.cancelled) break
                 if (result.error != null) break
 
-                if (!toolsAvailable) {
-                    completed = true
-                    break
-                }
+                if (!toolsAvailable) break
 
                 when (val parsed = ToolCallParser.parse(result.text)) {
-                    ParsedToolCall.None -> {
-                        completed = true
-                        break
-                    }
+                    ParsedToolCall.None -> break
 
                     is ParsedToolCall.Failure -> {
-                        lastWasTool = true
+                        val signature = "format-error:${parsed.message}"
+                        if (signature == repeatSignature) {
+                            repeatCount++
+                        } else {
+                            repeatSignature = signature
+                            repeatCount = 1
+                        }
                         Log.w(TAG, "tool parse failure: ${parsed.message}; raw=${result.text.take(2000)}")
                         val failureText = parsed.message
                         val toolMessage = ChatMessage(
@@ -1871,9 +1877,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
 
                     is ParsedToolCall.Success -> {
-                        lastWasTool = true
                         val call = parsed.call
-                        Log.i(TAG, "tool call: ${call.name} ${call.arguments}")
+                        val signature = "call:${call.name}:${call.arguments}"
+                        if (signature == repeatSignature) {
+                            repeatCount++
+                        } else {
+                            repeatSignature = signature
+                            repeatCount = 1
+                        }
+                        Log.i(TAG, "tool call (round $rounds): ${call.name} ${call.arguments}")
                         val visible = ToolCallParser.strip(result.text)
                         val toolMessage = ChatMessage(
                             role = "tool",
@@ -1890,7 +1902,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                         updateMessages { cleaned + toolMessage }
-                        _state.update { it.copy(status = "Инструмент: ${call.name}…") }
+                        _state.update { it.copy(status = "Шаг $rounds · инструмент ${call.name}…") }
                         val execution = toolRegistry.execute(call, settings)
                         updateMessages { messages ->
                             messages.map { message ->
@@ -1909,12 +1921,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         scheduleSave()
                     }
                 }
+
+                // Stuck-loop breaker: not a step budget, only an identical
+                // call repeated with no progress gets the run stopped.
+                if (repeatCount >= MAX_IDENTICAL_TOOL_REPEATS) {
+                    Log.w(TAG, "tool loop stuck: $repeatSignature x$repeatCount, round $rounds")
+                    stuckLoop = true
+                    break
+                }
             }
 
-            if (rounds >= 6 && lastWasTool && !completed && !cancelRequested) {
-                setStatus("Достигнут лимит 6 шагов с инструментами", autoClearMs = 6000)
+            _state.update { it.copy(generating = false, progress = null, status = null) }
+            if (stuckLoop) {
+                setStatus(
+                    "Прервано: модель повторяет один и тот же вызов $repeatCount× подряд",
+                    autoClearMs = 8000,
+                )
             }
-            _state.update { it.copy(generating = false, progress = null) }
             scheduleSave()
         }
     }
@@ -2448,6 +2471,24 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         for (m in history) {
             when (m.role) {
                 "tool" -> {
+                    // Replay the model's own tool call into the context right
+                    // before its result. The marker is stripped from the
+                    // assistant turn for display, and without seeing its own
+                    // call the model ends the chain after one step. Synthetic
+                    // format errors (no arguments stored) have no call to
+                    // replay.
+                    if (!m.toolName.isNullOrBlank() && !m.toolArgs.isNullOrBlank()) {
+                        val name = m.toolName
+                        val args = m.toolArgs
+                        val replay =
+                            "\u003ctool_call\u003e{\"name\":\"$name\",\"arguments\":$args}\u003c/tool_call\u003e"
+                        if (roles.isNotEmpty() && roles.last() == "assistant") {
+                            contents[contents.lastIndex] = contents.last() + "\n" + replay
+                        } else {
+                            roles += "assistant"
+                            contents += replay
+                        }
+                    }
                     roles += "tool"
                     val prefix = if (m.isError) "Tool error" else "Tool result"
                     contents += "$prefix (${m.toolName}):\n${m.toolResult ?: m.text}"
