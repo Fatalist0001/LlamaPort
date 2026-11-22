@@ -2,6 +2,11 @@ package com.llamaport.app.ui.robot
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -850,5 +855,30 @@ private fun DrawScope.drawMouthExpression(
                 cellRect(gx, row, dimColor, 1f)
             }
         }
+    }
+}
+/**
+ * Loading fill for the [RobotState.Loading] eyes: a slow endless bottom-up
+ * fill, parked at a readable half-filled state with reduced motion, 0 when
+ * not loading. Shared by the home hero and the chat stage header.
+ */
+@Composable
+internal fun rememberLoadFill(loading: Boolean): Float = when {
+    !loading -> 0f
+    // With reduced motion the eyes sit at a readable half-filled state
+    // instead of running an endless decorative fill.
+    LocalReducedMotion.current -> 0.6f
+    else -> {
+        val infinite = rememberInfiniteTransition(label = "loadFill")
+        val t by infinite.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1100, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "loadFillT",
+        )
+        t
     }
 }

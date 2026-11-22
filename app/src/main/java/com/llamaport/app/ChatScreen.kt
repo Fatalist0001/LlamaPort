@@ -15,8 +15,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -90,6 +88,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -108,6 +107,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -122,8 +122,10 @@ import com.llamaport.app.ui.chat.MessageList
 import com.llamaport.app.ui.chat.decodeSampledBitmap
 import com.llamaport.app.ui.models.ModelsSheet
 import com.llamaport.app.ui.models.ProviderEditorPage
+import com.llamaport.app.ui.robot.AsciiRobot
 import com.llamaport.app.ui.robot.RobotDemoDialog
-import com.llamaport.app.ui.robot.RobotDock
+import com.llamaport.app.ui.robot.RobotState
+import com.llamaport.app.ui.robot.rememberLoadFill
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.ObsidianBackground
 import com.llamaport.app.ui.components.ObsidianButton
@@ -136,6 +138,8 @@ import com.llamaport.app.ui.components.StateDot
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
+import com.llamaport.app.ui.motion.disclosureEnter
+import com.llamaport.app.ui.motion.disclosureExit
 import com.llamaport.app.ui.settings.GenerationSettingsSheet
 import com.llamaport.app.ui.settings.SettingsSheet
 import com.llamaport.app.ui.theme.EyebrowStyle
@@ -145,6 +149,8 @@ import com.llamaport.app.ui.theme.ObsidianTheme
 import com.llamaport.app.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -296,7 +302,6 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                 if (state.modelLoaded || state.messages.isNotEmpty()) {
                     ChatInputBar(
                         state = state,
-                        live = viewModel.live,
                         onInput = viewModel::onInputChange,
                         onSend = viewModel::send,
                         onStop = viewModel::stop,
@@ -304,7 +309,6 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                             mediaPicker.launch(mediaMimeTypes(state))
                         },
                         onRemoveAttachment = viewModel::removePendingAttachment,
-                        onRobotLongPress = { showRobotDemo = true },
                     )
                 }
             },
@@ -314,7 +318,53 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                     .padding(padding)
                     .fillMaxSize(),
             ) {
-                StatusStrip(state, onFreeMemory = viewModel::freeMemory)
+                // The conversation avatar header: the hero robot takes the
+                // avatar column of the chat, with the status line and the
+                // progress merged into its right column. On the empty screen
+                // the hero owns the stage, so the header stays away.
+                AnimatedVisibility(
+                    visible = state.messages.isNotEmpty(),
+                    enter = disclosureEnter(),
+                    exit = disclosureExit(),
+                ) {
+                    RobotHeader(
+                        state = state,
+                        live = viewModel.live,
+                        onLongPress = { showRobotDemo = true },
+                        onFreeMemory = viewModel::freeMemory,
+                    )
+                }
+
+                // The home screen keeps its own status line: load notices and
+                // the free-memory action must not depend on the header.
+                if (state.messages.isEmpty()) {
+                    StatusStrip(state, onFreeMemory = viewModel::freeMemory)
+                    val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
+                    when {
+                        state.loadingModel -> ObsidianProgressLine(
+                            progress = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(3.dp),
+                            trackColor = palette.elevated,
+                            accent = palette.silver,
+                        )
+                        promptProgress != null -> ObsidianProgressLine(
+                            progress = if (promptProgress.total > 0) {
+                                promptProgress.processed.toFloat() / promptProgress.total
+                            } else {
+                                0f
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(3.dp),
+                            trackColor = palette.elevated,
+                            accent = palette.silver,
+                        )
+                    }
+                }
 
                 if (state.serviceDead) {
                     Row(
@@ -348,32 +398,6 @@ fun LlamaPortApp(viewModel: ChatViewModel) {
                             Text("Перезапустить", color = palette.silver)
                         }
                     }
-                }
-
-                val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
-                when {
-                    state.loadingModel -> ObsidianProgressLine(
-                        progress = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(3.dp),
-                        trackColor = palette.elevated,
-                        accent = palette.silver,
-                    )
-                    promptProgress != null -> ObsidianProgressLine(
-                        progress = if (promptProgress.total > 0) {
-                            promptProgress.processed.toFloat() / promptProgress.total
-                        } else {
-                            0f
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(3.dp),
-                        trackColor = palette.elevated,
-                        accent = palette.silver,
-                    )
                 }
 
                 if (state.messages.isEmpty()) {
@@ -613,11 +637,18 @@ private fun MemoryWarningDialog(
     )
 }
 
+/** Status line shared by the home strip and the conversation avatar header. */
+private data class StatusLine(
+    val text: String?,
+    val active: Boolean,
+    val accent: Color,
+)
+
 @Composable
-private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
+private fun statusLineFor(state: UiState): StatusLine {
     val palette = ObsidianTheme.palette
     val progress = state.progress
-    val left = when {
+    val text = when {
         progress != null && progress.phase == GenerationPhase.PROMPT ->
             if (progress.total > 0) {
                 "промпт ${progress.processed}/${progress.total}"
@@ -630,13 +661,19 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
         state.generating -> "генерация"
         else -> state.status
     }
-    val active = state.generating || progress != null
-    val visible = left != null || state.showFreeMemory
     val accent = when {
         state.serviceDead -> palette.error
         progress != null || state.generating -> palette.silver
         else -> palette.textMuted
     }
+    return StatusLine(text, state.generating || progress != null, accent)
+}
+
+@Composable
+private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
+    val palette = ObsidianTheme.palette
+    val status = statusLineFor(state)
+    val visible = status.text != null || state.showFreeMemory
 
     AnimatedVisibility(visible = visible) {
         Column(Modifier.fillMaxWidth()) {
@@ -647,20 +684,20 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StateDot(
-                    color = accent,
+                    color = status.accent,
                     size = 5.dp,
                     pulse = state.loadingModel,
                 )
                 Spacer(Modifier.width(8.dp))
-                if (left != null) {
+                if (status.text != null) {
                     Text(
-                        text = left,
+                        text = status.text,
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             letterSpacing = 0.2.sp,
                         ),
-                        color = if (active) palette.silver else palette.textSecondary,
+                        color = if (status.active) palette.silver else palette.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -686,6 +723,184 @@ private fun StatusStrip(state: UiState, onFreeMemory: () -> Unit) {
                 SilverShimmerLine(
                     modifier = Modifier.fillMaxWidth().height(1.dp),
                     color = palette.silver,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The conversation avatar header: the hero robot takes the avatar column of
+ * the conversation — the same left edge and the same "LlamaPort" eyebrow
+ * grammar as every assistant message below, with the small message avatars
+ * echoing it down the list. The status line and the progress indicator
+ * merge into its right column instead of a separate strip, and the floor
+ * hairline under the robot replaces the section divider.
+ */
+@Composable
+private fun RobotHeader(
+    state: UiState,
+    live: StreamingAnswer,
+    onLongPress: () -> Unit,
+    onFreeMemory: () -> Unit,
+) {
+    val palette = ObsidianTheme.palette
+    val reduced = LocalReducedMotion.current
+
+    // Robot mood: the shared mapping plus one local override — the robot
+    // keeps thinking while generation streams nothing visible yet (the
+    // prompt phase or a reasoning block), the same predicate the message
+    // bubble uses for its "Думает…" line. text is read inside the flow
+    // only, so a token does not recompose the header.
+    var answerEmpty by remember { mutableStateOf(true) }
+    LaunchedEffect(live) {
+        snapshotFlow { splitThinking(live.text).answer.isEmpty() }
+            .distinctUntilChanged()
+            .collect { answerEmpty = it }
+    }
+    val base = robotStateFor(state)
+    val robotState =
+        if (base == RobotState.Generating && answerEmpty) RobotState.Thinking else base
+
+    // One mouth beat per streamed token: revision bumps on every appended
+    // chunk; the mouth opens and closes in two discrete steps — the pixel
+    // robot beats, it does not fade. Reduced motion keeps the mouth at a
+    // static half-open width while generating.
+    var pulse by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(live, reduced) {
+        if (reduced) return@LaunchedEffect
+        // drop(1): the first emission is the stale revision of a previous
+        // generation; only fresh beats should open the mouth.
+        snapshotFlow { live.revision }.drop(1).collect {
+            pulse = 1f
+            delay(90)
+            pulse = 0.45f
+            delay(90)
+            pulse = 0f
+        }
+    }
+    val mouthPulse = when {
+        reduced && robotState == RobotState.Generating -> 0.35f
+        else -> pulse
+    }
+
+    val loadFill = rememberLoadFill(state.loadingModel)
+    // Rough viewport proxy: the configuration height minus the system bars;
+    // the home hero measures its viewport exactly, the header only needs the
+    // size tier.
+    val compact = LocalConfiguration.current.screenHeightDp < 700
+    val robotSize = if (compact) 60.dp else 80.dp
+    val status = statusLineFor(state)
+    val statusVisible = status.text != null || state.showFreeMemory
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            AsciiRobot(
+                state = robotState,
+                size = robotSize,
+                progress = loadFill,
+                pulse = mouthPulse,
+                active = true,
+                lively = true,
+                onLongPress = onLongPress,
+            )
+            Spacer(Modifier.height(2.dp))
+            // The stage floor: the fading hairline the robot stands on — the
+            // quiet replacement of the section divider.
+            Box(
+                Modifier
+                    .width(robotSize * 0.78f)
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                palette.silverDim.copy(alpha = 0.28f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            // Same header grammar as an assistant message: the eyebrow name
+            // without a tick. The streaming state is told by the robot
+            // itself and by the status line below, not duplicated here.
+            Eyebrow(text = "LlamaPort", color = palette.textMuted, tick = false)
+            AnimatedVisibility(visible = statusVisible) {
+                Column {
+                    Spacer(Modifier.height(5.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StateDot(
+                            color = status.accent,
+                            size = 4.dp,
+                            pulse = state.loadingModel,
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        if (status.text != null) {
+                            Text(
+                                text = status.text,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 0.2.sp,
+                                ),
+                                color = if (status.active) palette.silver else palette.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                        }
+                        if (state.showFreeMemory) {
+                            TextButton(
+                                onClick = onFreeMemory,
+                                enabled = !state.freeMemoryBusy,
+                                contentPadding = PaddingValues(horizontal = 6.dp),
+                            ) {
+                                Text(
+                                    if (state.freeMemoryBusy) "…" else "Освободить",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.silver,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            // The floor doubles as the progress line: an indeterminate sweep
+            // while the model loads, a fraction fill while the prompt is
+            // being processed.
+            val promptProgress = state.progress?.takeIf { it.phase == GenerationPhase.PROMPT }
+            if (state.loadingModel || promptProgress != null) {
+                Spacer(Modifier.height(4.dp))
+            }
+            when {
+                state.loadingModel -> ObsidianProgressLine(
+                    progress = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    trackColor = palette.elevated,
+                    accent = palette.silver,
+                )
+                promptProgress != null -> ObsidianProgressLine(
+                    progress = if (promptProgress.total > 0) {
+                        promptProgress.processed.toFloat() / promptProgress.total
+                    } else {
+                        0f
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    trackColor = palette.elevated,
+                    accent = palette.silver,
                 )
             }
         }
@@ -763,13 +978,11 @@ private fun PendingAttachmentChip(attachment: Attachment, onRemove: () -> Unit) 
 @Composable
 private fun ChatInputBar(
     state: UiState,
-    live: StreamingAnswer,
     onInput: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onAttach: () -> Unit,
     onRemoveAttachment: (Attachment) -> Unit,
-    onRobotLongPress: () -> Unit,
 ) {
     val palette = ObsidianTheme.palette
     val reduced = LocalReducedMotion.current
@@ -830,30 +1043,6 @@ private fun ChatInputBar(
                         }
                     }
                 }
-            }
-            // The chat companion: the home hero docks here for the whole
-            // conversation — the bottom chrome never scrolls away with the
-            // messages and stays visible above the keyboard.
-            AnimatedVisibility(
-                visible = state.messages.isNotEmpty(),
-                enter = if (reduced) {
-                    fadeIn(tween(MotionTokens.Durations.FADE_REDUCED))
-                } else {
-                    fadeIn(tween(MotionTokens.Durations.ENTER)) +
-                        slideInVertically(initialOffsetY = { it / 2 })
-                },
-                exit = if (reduced) {
-                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED))
-                } else {
-                    fadeOut(tween(MotionTokens.Durations.FADE_REDUCED)) +
-                        slideOutVertically(targetOffsetY = { it / 2 })
-                },
-            ) {
-                RobotDock(
-                    state = state,
-                    live = live,
-                    onLongPress = onRobotLongPress,
-                )
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Row(
