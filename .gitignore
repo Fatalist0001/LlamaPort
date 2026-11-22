@@ -29,6 +29,7 @@ local.properties
 *.apk
 *.log
 *.aab
+perf/
 
 # Models and signing material that must never be committed
 *.gguf
