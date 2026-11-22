@@ -3,6 +3,7 @@ package com.llamaport.app.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.llamaport.app.ui.AppIcons
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.pressable
@@ -526,4 +528,34 @@ fun ObsidianTag(
     ) {
         Text(text = text, style = EyebrowStyle, color = color, maxLines = 1)
     }
+}
+
+/**
+ * Chevron for collapsible section headers: points down while collapsed and
+ * rotates 180° on expand, with reduced motion switching instantly.
+ */
+@Composable
+fun DisclosureChevron(
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+    tint: Color = ObsidianTheme.palette.textSecondary,
+) {
+    val reduced = LocalReducedMotion.current
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = if (reduced) {
+            snap()
+        } else {
+            tween(MotionTokens.Durations.SHORT, easing = MotionTokens.Easing.Standard)
+        },
+        label = "disclosureChevron",
+    )
+    Icon(
+        imageVector = AppIcons.Chevron,
+        contentDescription = if (expanded) "Свернуть" else "Открыть",
+        tint = tint,
+        modifier = modifier
+            .size(18.dp)
+            .graphicsLayer { rotationZ = rotation },
+    )
 }

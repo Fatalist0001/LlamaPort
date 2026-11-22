@@ -75,6 +75,7 @@ import com.llamaport.app.cloud.MaxTokensField
 import com.llamaport.app.cloud.hostOf
 import com.llamaport.app.cloud.maskKey
 import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.components.DisclosureChevron
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.Hairline
 import com.llamaport.app.ui.components.ObsidianButton
@@ -114,6 +115,10 @@ internal fun CloudModelsBlock(
     val palette = ObsidianTheme.palette
     val enabled = !state.generating && !state.loadingModel
     var pendingDelete by remember { mutableStateOf<CloudProvider?>(null) }
+    // The whole cloud block is collapsed behind a disclosure by default:
+    // provider cards and their model lists only take space when the user
+    // asks for them.
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -126,76 +131,101 @@ internal fun CloudModelsBlock(
             }
         }
         Spacer(Modifier.height(7.dp))
-        Text(
-            "API-провайдеры",
-            style = MaterialTheme.typography.headlineSmall,
-            color = palette.textPrimary,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "OpenAI-совместимый адрес и ключ. Модель отвечает через интернет, " +
-                "локальный файл при этом не нужен.",
-            style = MaterialTheme.typography.bodySmall,
-            color = palette.textSecondary,
-        )
-        Spacer(Modifier.height(12.dp))
-
-        if (state.providers.isEmpty()) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(palette.card)
-                    .border(1.dp, palette.hairline, MaterialTheme.shapes.medium)
-                    .padding(18.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    AppIcons.Cloud,
-                    contentDescription = null,
-                    tint = palette.textMuted,
-                    modifier = Modifier.size(26.dp),
-                )
-                Spacer(Modifier.height(9.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .pressable(onClick = { expanded = !expanded }),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "API-провайдеры",
+                style = MaterialTheme.typography.headlineSmall,
+                color = palette.textPrimary,
+            )
+            Spacer(Modifier.weight(1f))
+            if (state.providers.isNotEmpty()) {
                 Text(
-                    "Провайдеры не настроены",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = palette.textPrimary,
+                    "${state.providers.size} ПРОВ.",
+                    style = MonoSmall,
+                    color = palette.textMuted,
                 )
-                Spacer(Modifier.height(3.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            DisclosureChevron(expanded = expanded)
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = disclosureEnter(),
+            exit = disclosureExit(),
+        ) {
+            Column {
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    "Например: OpenRouter, OpenAI, vLLM или llama.cpp server.",
-                    style = MaterialTheme.typography.labelSmall,
+                    "OpenAI-совместимый адрес и ключ. Модель отвечает через интернет, " +
+                        "локальный файл при этом не нужен.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = palette.textSecondary,
                 )
-            }
-        } else {
-            state.providers.forEachIndexed { index, provider ->
-                key(provider.id) {
-                    Reveal(index = index) {
-                        ProviderCard(
-                            provider = provider,
-                            activeModelId = state.activeCloud
-                                ?.takeIf { it.providerId == provider.id }
-                                ?.modelId,
-                            enabled = enabled,
-                            onSelect = { modelId -> onSelect(provider.id, modelId) },
-                            onEdit = { onEdit(provider) },
-                            onDelete = { pendingDelete = provider },
+                Spacer(Modifier.height(12.dp))
+
+                if (state.providers.isEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(palette.card)
+                            .border(1.dp, palette.hairline, MaterialTheme.shapes.medium)
+                            .padding(18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            AppIcons.Cloud,
+                            contentDescription = null,
+                            tint = palette.textMuted,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        Spacer(Modifier.height(9.dp))
+                        Text(
+                            "Провайдеры не настроены",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = palette.textPrimary,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Например: OpenRouter, OpenAI, vLLM или llama.cpp server.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.textSecondary,
                         )
                     }
+                } else {
+                    state.providers.forEachIndexed { index, provider ->
+                        key(provider.id) {
+                            Reveal(index = index) {
+                                ProviderCard(
+                                    provider = provider,
+                                    activeModelId = state.activeCloud
+                                        ?.takeIf { it.providerId == provider.id }
+                                        ?.modelId,
+                                    enabled = enabled,
+                                    onSelect = { modelId -> onSelect(provider.id, modelId) },
+                                    onEdit = { onEdit(provider) },
+                                    onDelete = { pendingDelete = provider },
+                                )
+                            }
+                        }
+                    }
                 }
+
+                Spacer(Modifier.height(10.dp))
+                ObsidianButton(
+                    text = "Добавить провайдера",
+                    onClick = onAdd,
+                    style = ObsidianButtonStyle.Secondary,
+                    leadingIcon = Icons.Filled.Add,
+                    enabled = !state.generating,
+                )
             }
         }
-
-        Spacer(Modifier.height(10.dp))
-        ObsidianButton(
-            text = "Добавить провайдера",
-            onClick = onAdd,
-            style = ObsidianButtonStyle.Secondary,
-            leadingIcon = Icons.Filled.Add,
-            enabled = !state.generating,
-        )
     }
 
     pendingDelete?.let { provider ->
@@ -248,6 +278,10 @@ private fun ProviderCard(
 ) {
     val palette = ObsidianTheme.palette
     val active = activeModelId != null
+    // The model list is collapsed by default: a provider with dozens of
+    // models must not stretch the whole sheet. The active model stays
+    // visible in the header while collapsed.
+    var modelsExpanded by rememberSaveable(provider.id) { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -259,6 +293,7 @@ private fun ProviderCard(
         Row(
             Modifier
                 .fillMaxWidth()
+                .pressable(onClick = { modelsExpanded = !modelsExpanded })
                 .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -294,6 +329,21 @@ private fun ProviderCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (activeModelId != null) {
+                    Spacer(Modifier.height(3.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StateDot(color = palette.silver, size = 4.dp)
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            activeModelId,
+                            style = MonoSmall,
+                            color = palette.silver,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     ObsidianTag(maskKey(provider.apiKey).uppercase(Locale.ROOT))
@@ -306,6 +356,11 @@ private fun ProviderCard(
                     )
                 }
             }
+            Spacer(Modifier.width(6.dp))
+            DisclosureChevron(
+                expanded = modelsExpanded,
+                tint = if (modelsExpanded) palette.silver else palette.textSecondary,
+            )
             ObsidianIconButton(
                 icon = Icons.Outlined.Create,
                 contentDescription = "Изменить провайдера",
@@ -328,23 +383,30 @@ private fun ProviderCard(
             )
         }
 
-        if (provider.models.isEmpty()) {
-            Hairline()
-            Text(
-                "Список моделей пуст — измените провайдера и добавьте вручную.",
-                style = MaterialTheme.typography.labelSmall,
-                color = palette.textSecondary,
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-            )
-        } else {
-            Hairline()
-            provider.models.forEach { modelId ->
-                CloudModelRow(
-                    modelId = modelId,
-                    active = modelId == activeModelId,
-                    enabled = enabled,
-                    onClick = { onSelect(modelId) },
-                )
+        AnimatedVisibility(
+            visible = modelsExpanded,
+            enter = disclosureEnter(),
+            exit = disclosureExit(),
+        ) {
+            Column {
+                Hairline()
+                if (provider.models.isEmpty()) {
+                    Text(
+                        "Список моделей пуст — измените провайдера и добавьте вручную.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textSecondary,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    )
+                } else {
+                    provider.models.forEach { modelId ->
+                        CloudModelRow(
+                            modelId = modelId,
+                            active = modelId == activeModelId,
+                            enabled = enabled,
+                            onClick = { onSelect(modelId) },
+                        )
+                    }
+                }
             }
         }
     }

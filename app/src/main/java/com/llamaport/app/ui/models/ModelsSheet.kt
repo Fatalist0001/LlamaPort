@@ -1,5 +1,6 @@
 package com.llamaport.app.ui.models
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -46,6 +47,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +64,7 @@ import com.llamaport.app.cloud.CloudProvider
 import com.llamaport.app.formatRam
 import com.llamaport.app.formatSize
 import com.llamaport.app.ui.AppIcons
+import com.llamaport.app.ui.components.DisclosureChevron
 import com.llamaport.app.ui.components.Eyebrow
 import com.llamaport.app.ui.components.Hairline
 import com.llamaport.app.ui.components.ObsidianButton
@@ -75,6 +78,9 @@ import com.llamaport.app.ui.motion.AnimatedNumber
 import com.llamaport.app.ui.motion.LocalReducedMotion
 import com.llamaport.app.ui.motion.MotionTokens
 import com.llamaport.app.ui.motion.Reveal
+import com.llamaport.app.ui.motion.disclosureEnter
+import com.llamaport.app.ui.motion.disclosureExit
+import com.llamaport.app.ui.motion.pressable
 import com.llamaport.app.ui.theme.CardShape
 import com.llamaport.app.ui.theme.EyebrowStyle
 import com.llamaport.app.ui.theme.MonoNumeric
@@ -129,6 +135,13 @@ internal fun ModelsSheet(
     var pendingFile by remember { mutableStateOf<File?>(null) }
     var successTick by remember { mutableIntStateOf(0) }
     var wasLoading by remember { mutableStateOf(state.loadingModel) }
+    // Local model files are collapsed behind a disclosure by default. A load
+    // keeps the sheet open on purpose (progress line, dimmed siblings), so
+    // the section expands itself while the load runs.
+    var localExpanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.loadingModel) {
+        if (state.loadingModel) localExpanded = true
+    }
     val busy = state.generating || state.loadingModel
     val enabled = !busy
     val availMb = state.memAvailableMb
@@ -207,7 +220,15 @@ internal fun ModelsSheet(
             Column {
                 Eyebrow(text = "локальные модели", color = palette.textMuted)
                 Spacer(Modifier.height(7.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Collapsed by default: the file list, the subtitle and the
+                // load progress live behind the disclosure. The status word
+                // and the file count stay visible in the header row.
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .pressable(onClick = { localExpanded = !localExpanded }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
                         "Модели GGUF",
                         style = MaterialTheme.typography.headlineSmall,
@@ -224,8 +245,25 @@ internal fun ModelsSheet(
                         Text("В ПАМЯТИ", style = MonoSmall, color = palette.success)
                     } else if (state.activeCloud != null) {
                         Text("ОТКЛЮЧЕНЫ", style = MonoSmall, color = palette.textMuted)
+                    } else if (state.models.isNotEmpty()) {
+                        Text(
+                            "${state.models.size} МОД.",
+                            style = MonoSmall,
+                            color = palette.textMuted,
+                        )
                     }
+                    Spacer(Modifier.width(8.dp))
+                    DisclosureChevron(expanded = localExpanded)
                 }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = localExpanded,
+            enter = disclosureEnter(),
+            exit = disclosureExit(),
+        ) {
+            Column {
                 Spacer(Modifier.height(4.dp))
                 val localSubtitle = if (state.activeCloud != null) {
                     "Сейчас активна облачная модель: локальные файлы не занимают память."
@@ -254,78 +292,78 @@ internal fun ModelsSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
-        if (state.models.isEmpty()) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(palette.card)
-                    .border(1.dp, palette.hairline, MaterialTheme.shapes.medium)
-                    .padding(18.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    AppIcons.Document,
-                    contentDescription = null,
-                    tint = palette.textMuted,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Локальных моделей пока нет",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = palette.textPrimary,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Нажмите «Добавить», чтобы выбрать .gguf файл, " +
-                        "или подключите облачного провайдера выше.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.textSecondary,
-                )
-            }
-        } else {
-            state.models.forEachIndexed { index, file ->
-                val active = file.name == state.modelName && state.activeCloud == null
-                val mmproj = onMmproj(file)
-                val baseBytes = file.length() + (mmproj?.length() ?: 0L)
-                val kvBytes = if (active && state.modelLoaded) {
-                    state.estimate?.kvBytes ?: 0L
-                } else {
-                    0L
-                }
-                val needMb = (baseBytes * RESERVE).toLong() / MB + kvBytes / MB
-                val approximate = !(active && state.estimate != null)
-                val loading = loadingFile == file
-                val dimmed = state.loadingModel && !loading
-                // Keep swipe/remember state attached to the file, not to the
-                // list slot: importing or deleting a model must not move the
-                // delete callback onto a neighbouring card.
-                key(file.absolutePath) {
-                    Reveal(index = 4 + index) {
-                        SwipeableModelCard(
-                            file = file,
-                            mmproj = mmproj,
-                            active = active,
-                            loading = loading,
-                            dimmed = dimmed,
-                            vision = if (active) state.supportsVision else mmproj != null,
-                            audio = active && state.supportsAudio,
-                            needMb = needMb,
-                            approximate = approximate,
-                            availMb = availMb,
-                            enabled = enabled,
-                            successTick = if (active && !dimmed) successTick else 0,
-                            onLoad = {
-                                pendingFile = file
-                                onLoad(file)
-                            },
-                            onDeleteRequest = { pendingDelete = file },
+                if (state.models.isEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(palette.card)
+                            .border(1.dp, palette.hairline, MaterialTheme.shapes.medium)
+                            .padding(18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            AppIcons.Document,
+                            contentDescription = null,
+                            tint = palette.textMuted,
+                            modifier = Modifier.size(28.dp),
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "Локальных моделей пока нет",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = palette.textPrimary,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Нажмите «Добавить», чтобы выбрать .gguf файл, " +
+                                "или подключите облачного провайдера выше.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textSecondary,
+                        )
+                    }
+                } else {
+                    state.models.forEachIndexed { index, file ->
+                        val active = file.name == state.modelName && state.activeCloud == null
+                        val mmproj = onMmproj(file)
+                        val baseBytes = file.length() + (mmproj?.length() ?: 0L)
+                        val kvBytes = if (active && state.modelLoaded) {
+                            state.estimate?.kvBytes ?: 0L
+                        } else {
+                            0L
+                        }
+                        val needMb = (baseBytes * RESERVE).toLong() / MB + kvBytes / MB
+                        val approximate = !(active && state.estimate != null)
+                        val loading = loadingFile == file
+                        val dimmed = state.loadingModel && !loading
+                        // Keep swipe/remember state attached to the file, not to the
+                        // list slot: importing or deleting a model must not move the
+                        // delete callback onto a neighbouring card.
+                        key(file.absolutePath) {
+                            Reveal(index = 4 + index) {
+                                SwipeableModelCard(
+                                    file = file,
+                                    mmproj = mmproj,
+                                    active = active,
+                                    loading = loading,
+                                    dimmed = dimmed,
+                                    vision = if (active) state.supportsVision else mmproj != null,
+                                    audio = active && state.supportsAudio,
+                                    needMb = needMb,
+                                    approximate = approximate,
+                                    availMb = availMb,
+                                    enabled = enabled,
+                                    successTick = if (active && !dimmed) successTick else 0,
+                                    onLoad = {
+                                        pendingFile = file
+                                        onLoad(file)
+                                    },
+                                    onDeleteRequest = { pendingDelete = file },
+                                )
+                            }
+                        }
                     }
                 }
             }
